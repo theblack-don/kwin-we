@@ -54,6 +54,7 @@
 #include "scene/workspacescene.h"
 #include "tabletmodemanager.h"
 #include "tiles/tilemanager.h"
+#include "tiling/tilingcontroller.h"
 #include "useractions.h"
 #include "utils/envvar.h"
 #include "utils/kernel.h"
@@ -306,6 +307,9 @@ void Workspace::init()
 
     slotOutputBackendOutputsQueried();
     connect(kwinApp()->outputBackend(), &OutputBackend::outputsQueried, this, &Workspace::slotOutputBackendOutputsQueried);
+
+    m_tilingController = std::make_unique<TilingController>(this);
+    connect(this, &Workspace::outputAdded, m_tilingController.get(), &TilingController::onOutputAdded);
 
     reconfigureTimer.setSingleShot(true);
     m_rearrangeTimer.setSingleShot(true);
@@ -854,6 +858,11 @@ void Workspace::addX11Window(X11Window *window)
     m_focusChain->update(window, FocusChain::Update);
     Q_ASSERT(!m_windows.contains(window));
     m_windows.append(window);
+
+    if (m_tilingController) {
+        m_tilingController->onWindowAdded(window);
+    }
+
     addToStack(window);
     window->updateLayer();
     window->checkActiveModal();
@@ -915,14 +924,19 @@ void Workspace::addWaylandWindow(Window *window)
     setupWindowConnections(window);
     window->updateLayer();
 
-    if (window->isPlaceable() && !window->isPlaced()) {
+    Q_ASSERT(!m_windows.contains(window));
+    m_windows.append(window);
+
+    if (m_tilingController) {
+        m_tilingController->onWindowAdded(window);
+    }
+
+    if (window->isPlaceable() && !window->isPlaced() && window->tilingState().mode != TilingState::Mode::Tiled) {
         const RectF area = clientArea(PlacementArea, window, activeOutput());
         if (const auto placement = m_placement->place(window, area)) {
             window->place(*placement);
         }
     }
-    Q_ASSERT(!m_windows.contains(window));
-    m_windows.append(window);
     addToStack(window);
 
     const bool shouldActivate = window->wantsInput() && !window->isPopupWindow()
@@ -959,6 +973,10 @@ void Workspace::removeWaylandWindow(Window *window)
 
 void Workspace::removeWindow(Window *window)
 {
+    if (m_tilingController) {
+        m_tilingController->onWindowRemoved(window);
+    }
+
     if (window == m_activePopupWindow) {
         closeActivePopup();
     }
@@ -1029,6 +1047,10 @@ void Workspace::slotReconfigure()
                 (*it)->setNoBorder(false);
             }
         }
+    }
+
+    if (m_tilingController) {
+        m_tilingController->reconfigure();
     }
 }
 

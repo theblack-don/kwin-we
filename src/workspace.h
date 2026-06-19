@@ -88,6 +88,7 @@ class Placement;
 class OutputConfiguration;
 class RootTile;
 class TileManager;
+class TilingController;
 class OutputConfigurationStore;
 class LidSwitchTracker;
 class DpmsInputEventFilter;
@@ -427,6 +428,7 @@ public:
     Activities *activities() const;
 #endif
     OutputConfigurationStore *outputConfigureStore() const;
+    TilingController *tilingController() const;
 
     /**
      * Apply the requested output configuration. Note that you must use this function
@@ -736,6 +738,7 @@ private:
     PlaceholderOutput *m_placeholderOutput = nullptr;
     std::unique_ptr<PlaceholderInputEventFilter> m_placeholderFilter;
     std::map<LogicalOutput *, std::unique_ptr<TileManager>> m_tileManagers;
+    std::unique_ptr<TilingController> m_tilingController;
     std::unique_ptr<OutputConfigurationStore> m_outputConfigStore;
     std::unique_ptr<LidSwitchTracker> m_lidSwitchTracker;
     std::unique_ptr<OrientationSensor> m_orientationSensor;
@@ -823,6 +826,11 @@ inline SessionManager *Workspace::sessionManager() const
 inline bool Workspace::showingDesktop() const
 {
     return showing_desktop;
+}
+
+inline TilingController *Workspace::tilingController() const
+{
+    return m_tilingController.get();
 }
 
 inline bool Workspace::globalShortcutsDisabled() const

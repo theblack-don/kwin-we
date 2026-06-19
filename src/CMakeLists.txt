@@ -217,9 +217,13 @@ target_sources(kwin PRIVATE
     tablet_input.cpp
     tabletmodemanager.cpp
     tiles/customtile.cpp
+    tiles/layoutengine.cpp
+    tiles/masterstacklayoutengine.cpp
     tiles/quicktile.cpp
     tiles/tile.cpp
     tiles/tilemanager.cpp
+    tiling/tilingcontroller.cpp
+    tiling/tilingrules.cpp
     touch_input.cpp
     useractionprompt.cpp
     useractions.cpp
@@ -410,36 +414,36 @@ ecm_qt_declare_logging_category(kwin
     CATEGORY_NAME kwin_output_config
 )
 
-add_executable(kwin_wayland main_wayland.cpp)
+add_executable(kwin-we_wayland main_wayland.cpp)
 
 if(TARGET PkgConfig::libsystemd)
-    ecm_qt_declare_logging_category(kwin_wayland
+    ecm_qt_declare_logging_category(kwin-we_wayland
         HEADER watchdoglogging.h
         IDENTIFIER KWIN_WATCHDOG
         CATEGORY_NAME kwin_watchdog
         DEFAULT_SEVERITY Info
     )
 
-    target_sources(kwin_wayland PRIVATE watchdog.cpp)
-    target_link_libraries(kwin_wayland PkgConfig::libsystemd)
+    target_sources(kwin-we_wayland PRIVATE watchdog.cpp)
+    target_link_libraries(kwin-we_wayland PkgConfig::libsystemd)
 endif()
 
-target_link_libraries(kwin_wayland
+target_link_libraries(kwin-we_wayland
     kwin
     KF6::Crash
     KF6::I18n
 )
 if (KWIN_BUILD_X11)
-    target_link_libraries(kwin_wayland KWinXwaylandServerModule)
+    target_link_libraries(kwin-we_wayland KWinXwaylandServerModule)
 endif()
-target_compile_definitions(kwin_wayland PRIVATE
+target_compile_definitions(kwin-we_wayland PRIVATE
     -DTRANSLATION_DOMAIN=\"kwin\"
 )
-kcoreaddons_target_static_plugins(kwin_wayland NAMESPACE "kwin/effects/plugins")
+kcoreaddons_target_static_plugins(kwin-we_wayland NAMESPACE "kwin/effects/plugins")
 
-install(TARGETS kwin_wayland ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+install(TARGETS kwin-we_wayland ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
-target_link_libraries(kwin_wayland
+target_link_libraries(kwin-we_wayland
     KWinQpaPlugin
     KF6WindowSystemKWinPlugin
     KF6IdleTimeKWinPlugin

@@ -21,11 +21,15 @@
 
 #include <QJsonValue>
 
+#include <memory>
+#include <unordered_map>
+
 class QTimer;
 
 namespace KWin
 {
 
+class LayoutEngine;
 class LogicalOutput;
 class Tile;
 class TileModel;
@@ -59,6 +63,14 @@ public:
     Tile *tileForWindow(Window *window, VirtualDesktop *desktop);
     void forgetWindow(Window *window, VirtualDesktop *desktop);
 
+    /**
+     * Assigns a layout engine to the given desktop. The engine is attached to
+     * the desktop's RootTile. Takes ownership of @p engine.
+     */
+    void setLayoutEngine(VirtualDesktop *desktop, std::unique_ptr<LayoutEngine> engine);
+    LayoutEngine *layoutEngine(VirtualDesktop *desktop) const;
+    LayoutEngine *layoutEngine() const;
+
 Q_SIGNALS:
     void tileRemoved(KWin::Tile *tile);
     void rootTileChanged(CustomTile *rootTile);
@@ -77,6 +89,7 @@ private:
 
     QHash<VirtualDesktop *, RootTile *> m_rootTiles;
     QHash<VirtualDesktop *, QuickRootTile *> m_quickRootTiles;
+    std::unordered_map<VirtualDesktop *, std::unique_ptr<LayoutEngine>> m_layoutEngines;
 
     bool m_tearingDown = false;
     friend class CustomTile;

@@ -12,6 +12,8 @@
 
 #include "config-kwin.h"
 
+#include <QFile>
+
 #include "databridge.h"
 #include "dnd.h"
 #include "window.h"
@@ -586,7 +588,11 @@ void Xwayland::destroyX11Connection()
 void Xwayland::runXWaylandStartupScripts()
 {
     QProcessEnvironment setupEnv = kwinApp()->processStartupEnvironment();
-    setupEnv.insert("DISPLAY", m_launcher->initDisplayName());
+    // When KWin starts Xwayland itself there is no separate init display, so
+    // fall back to the real display. Otherwise the startup scripts run with an
+    // empty DISPLAY and can deadlock waiting for an X server that is not yet
+    // accepting client connections.
+    setupEnv.insert("DISPLAY", m_launcher->initDisplayName().isEmpty() ? m_launcher->displayName() : m_launcher->initDisplayName());
 
     std::shared_ptr<QObject> readyGuard(new QObject());
     // captured by every process, then out of scope when finished
@@ -600,6 +606,10 @@ void Xwayland::runXWaylandStartupScripts()
 
     for (const QString &script : std::as_const(scripts)) {
         const QString path = scriptDir.filePath(script);
+        if (!QFile::exists(path)) {
+            qCDebug(KWIN_XWL) << "Skipping missing Xwayland startup script" << path;
+            continue;
+        }
         qCDebug(KWIN_XWL) << "Running Xwayland startup script" << path;
 
         auto *process = new QProcess;

@@ -44,6 +44,7 @@
 #include <PlasmaActivities/Info>
 #endif
 #include "appmenu.h"
+#include "tiling/tilingcontroller.h"
 
 #include <QCheckBox>
 #include <QFileInfo>
@@ -982,6 +983,58 @@ void Workspace::initShortcuts()
                  Qt::META | Qt::Key_D, &Workspace::slotToggleShowDesktop, false);
 
     initShortcut("Kill Window", i18n("Kill Window"), Qt::META | Qt::CTRL | Qt::Key_Escape, &Workspace::slotKillWindow, true);
+
+    // Native tiling shortcuts
+    initShortcut("Tiling Focus Left", i18n("Tiling Focus Left"), Qt::META | Qt::Key_Left, [this]() {
+        if (m_tilingController) {
+            m_tilingController->focusLeft();
+        }
+    }, true);
+    initShortcut("Tiling Focus Right", i18n("Tiling Focus Right"), Qt::META | Qt::Key_Right, [this]() {
+        if (m_tilingController) {
+            m_tilingController->focusRight();
+        }
+    }, true);
+    initShortcut("Tiling Focus Up", i18n("Tiling Focus Up"), Qt::META | Qt::Key_Up, [this]() {
+        if (m_tilingController) {
+            m_tilingController->focusUp();
+        }
+    }, true);
+    initShortcut("Tiling Focus Down", i18n("Tiling Focus Down"), Qt::META | Qt::Key_Down, [this]() {
+        if (m_tilingController) {
+            m_tilingController->focusDown();
+        }
+    }, true);
+    initShortcut("Tiling Toggle Floating", i18n("Tiling Toggle Floating"), Qt::META | Qt::Key_W, [this]() {
+        if (m_tilingController) {
+            m_tilingController->toggleFloating();
+        }
+    }, true);
+    initShortcut("Tiling Promote To Master", i18n("Tiling Promote To Master"), Qt::META | Qt::SHIFT | Qt::Key_Space, [this]() {
+        if (m_tilingController) {
+            m_tilingController->promoteToMaster();
+        }
+    }, true);
+    initShortcut("Tiling Move Window Previous", i18n("Tiling Move Window Previous"), Qt::META | Qt::SHIFT | Qt::Key_Left, [this]() {
+        if (m_tilingController) {
+            m_tilingController->moveWindowPrevious();
+        }
+    }, true);
+    initShortcut("Tiling Move Window Next", i18n("Tiling Move Window Next"), Qt::META | Qt::SHIFT | Qt::Key_Right, [this]() {
+        if (m_tilingController) {
+            m_tilingController->moveWindowNext();
+        }
+    }, true);
+    initShortcut("Tiling Move Window Left Output", i18n("Tiling Move Window Left Output"), Qt::META | Qt::SHIFT | Qt::CTRL | Qt::Key_Left, [this]() {
+        if (m_tilingController) {
+            m_tilingController->moveWindowToOutput(TilingController::TilingDirection::West);
+        }
+    }, true);
+    initShortcut("Tiling Move Window Right Output", i18n("Tiling Move Window Right Output"), Qt::META | Qt::SHIFT | Qt::CTRL | Qt::Key_Right, [this]() {
+        if (m_tilingController) {
+            m_tilingController->moveWindowToOutput(TilingController::TilingDirection::East);
+        }
+    }, true);
 
 #if KWIN_BUILD_TABBOX
     m_tabbox->initShortcuts();

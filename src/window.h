@@ -16,6 +16,7 @@
 #include "options.h"
 #include "rules.h"
 #include "scene/borderradius.h"
+#include "tiling/tilingstate.h"
 #include "utils/common.h"
 #include "utils/gravity.h"
 
@@ -1157,6 +1158,9 @@ public:
     void forgetTile(Tile *tile);
     void setTileCompatibility(Tile *tile);
 
+    TilingState &tilingState();
+    const TilingState &tilingState() const;
+
     void handleQuickTileShortcut(QuickTileMode mode);
     void setQuickTileModeAtCurrentPosition(QuickTileMode mode);
     void setQuickTileMode(QuickTileMode mode, const QPointF &tileAtPoint);
@@ -1877,6 +1881,7 @@ protected:
     bool m_delayedRaise = false;
     QPointer<Tile> m_requestedTile;
     QPointer<Tile> m_tile;
+    TilingState m_tilingState;
 
     // electric border/quick tiling
     std::optional<ElectricBorderMode> m_electricMode = std::nullopt;

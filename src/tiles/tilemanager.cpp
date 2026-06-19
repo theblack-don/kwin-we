@@ -9,6 +9,7 @@
 
 #include "tilemanager.h"
 #include "core/backendoutput.h"
+#include "layoutengine.h"
 #include "quicktile.h"
 #include "virtualdesktops.h"
 #include "window.h"
@@ -82,6 +83,7 @@ TileManager::TileManager(LogicalOutput *parent)
     connect(VirtualDesktopManager::self(), &VirtualDesktopManager::desktopAdded, this, addDesktop);
     connect(VirtualDesktopManager::self(), &VirtualDesktopManager::desktopRemoved,
             this, [this](VirtualDesktop *desk) {
+        m_layoutEngines.erase(desk);
         delete m_rootTiles.take(desk);
         delete m_quickRootTiles.take(desk);
     });
@@ -181,6 +183,34 @@ void TileManager::forgetWindow(Window *window, VirtualDesktop *desktop)
             owner->forget(window);
         }
     }
+}
+
+void TileManager::setLayoutEngine(VirtualDesktop *desktop, std::unique_ptr<LayoutEngine> engine)
+{
+    if (!desktop || !m_rootTiles.contains(desktop)) {
+        return;
+    }
+
+    auto it = m_layoutEngines.find(desktop);
+    if (it == m_layoutEngines.end()) {
+        it = m_layoutEngines.emplace(desktop, std::move(engine)).first;
+    } else {
+        it->second = std::move(engine);
+    }
+    if (LayoutEngine *e = it->second.get()) {
+        e->attach(m_rootTiles[desktop]);
+    }
+}
+
+LayoutEngine *TileManager::layoutEngine(VirtualDesktop *desktop) const
+{
+    auto it = m_layoutEngines.find(desktop);
+    return it == m_layoutEngines.end() ? nullptr : it->second.get();
+}
+
+LayoutEngine *TileManager::layoutEngine() const
+{
+    return layoutEngine(VirtualDesktopManager::self()->currentDesktop(m_output));
 }
 
 Tile::LayoutDirection strToLayoutDirection(const QString &dir)

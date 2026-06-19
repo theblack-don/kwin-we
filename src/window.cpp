@@ -3831,6 +3831,16 @@ void Window::setTileCompatibility(Tile *tile)
     }
 }
 
+TilingState &Window::tilingState()
+{
+    return m_tilingState;
+}
+
+const TilingState &Window::tilingState() const
+{
+    return m_tilingState;
+}
+
 void Window::doSetQuickTileMode()
 {
 }
