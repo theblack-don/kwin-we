@@ -6,6 +6,41 @@
 
 KWin is an easy to use, but flexible, compositor for Wayland on Linux. Its primary usage is in conjunction with a Desktop Shell (e.g. KDE Plasma Desktop). KWin is designed to go out of the way; users should not notice that they use a window manager at all. Nevertheless KWin provides a steep learning curve for advanced features, which are available, if they do not conflict with the primary mission. KWin does not have a dedicated targeted user group, but follows the targeted user group of the Desktop Shell using KWin as it's window manager.
 
+## Installing KineticWE on Fedora
+
+A convenience script is provided for Fedora that installs all dependencies, builds kwin-we, installs the [noctalia-shell](https://github.com/noctalia-dev/noctalia), and sets up session files so you can launch KineticWE from a TTY or a display greeter such as SDDM.
+
+```bash
+./install-fedora.sh
+```
+
+By default, binaries are installed to `$HOME/.local`. You can change this with the `INSTALL_PREFIX` environment variable:
+
+```bash
+INSTALL_PREFIX=/opt/kineticwe ./install-fedora.sh
+```
+
+You can also point the script at a different noctalia-shell repository:
+
+```bash
+NOCTALIA_URL=https://git.example.com/noctalia.git ./install-fedora.sh
+```
+
+After installation:
+
+- Start KineticWE from a TTY with:
+  ```bash
+  $HOME/.local/bin/start-kineticwe
+  ```
+- Or select **KineticWE** from the session menu in SDDM or another Wayland-compatible greeter.
+- If `$HOME/.local/bin` is not in your `PATH`, add the following lines to your shell profile (`~/.bashrc` or `~/.zshrc`):
+  ```bash
+  export PATH="$HOME/.local/bin:$PATH"
+  export LD_LIBRARY_PATH="$HOME/.local/lib64:$LD_LIBRARY_PATH"
+  ```
+
+> **Note:** The script uses `sudo` to install system packages via `dnf`. Make sure you have sudo privileges before running it.
+
 ## KWin is not...
 
  * a standalone Wayland compositor (c.f. labwc, sway) and does not provide any functionality belonging to a Desktop Shell.
