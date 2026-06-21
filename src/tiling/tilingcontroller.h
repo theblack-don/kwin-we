@@ -11,6 +11,7 @@
 #include "tilingstate.h"
 #include "tiles/layoutengine.h"
 
+#include <QColor>
 #include <QHash>
 #include <QObject>
 #include <QPointer>
@@ -84,6 +85,12 @@ public:
 
     TilingRules *rules() const { return m_rules.get(); }
 
+    enum class BorderMode {
+        None,
+        AllTiled,
+        ActiveOnly,
+    };
+
 private Q_SLOTS:
     void onInteractiveMoveResizeStarted();
     void onInteractiveMoveResizeFinished();
@@ -100,10 +107,15 @@ private:
     Window *activeTiledWindow() const;
 
     void setupDefaultLayoutEngine(TileManager *manager, VirtualDesktop *desktop);
+    void applyGapSettingsToOutput(LogicalOutput *output);
+    void updateBorders();
 
     QPointer<Workspace> m_workspace;
     std::unique_ptr<TilingRules> m_rules;
     bool m_enabled = true;
+    BorderMode m_borderMode = BorderMode::None;
+    qreal m_borderThickness = 2.0;
+    QColor m_borderColor;
 
     struct MoveContext {
         QPointer<LayoutEngine> engine;

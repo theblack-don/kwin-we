@@ -14,6 +14,7 @@
 #include "virtualdesktops.h"
 #include <kwin_export.h>
 
+#include <QMarginsF>
 #include <QObject>
 
 namespace KWin
@@ -97,6 +98,12 @@ public:
     qreal padding() const;
     void setPadding(qreal padding);
 
+    qreal gapBetween() const;
+    void setGapBetween(qreal gap);
+
+    QMarginsF gapMargins() const;
+    void setGapMargins(const QMarginsF &margins);
+
     QSizeF minimumSize() const;
     void setMinimumSize(const QSizeF &size);
 
@@ -154,6 +161,8 @@ Q_SIGNALS:
     void absoluteGeometryChanged();
     void windowGeometryChanged();
     void paddingChanged(qreal padding);
+    void gapBetweenChanged(qreal gap);
+    void gapMarginsChanged(const QMarginsF &margins);
     void minimumSizeChanged(const QSizeF &size);
     void rowChanged(int row);
     void isLayoutChanged(bool isLayout);
@@ -179,6 +188,8 @@ protected:
     QSizeF m_minimumSize = QSizeF(0.15, 0.15);
     QuickTileMode m_quickTileMode = QuickTileFlag::None;
     qreal m_padding = 4.0;
+    qreal m_gapBetween = 0.0;
+    QMarginsF m_gapMargins;
 };
 
 } // namespace KWin

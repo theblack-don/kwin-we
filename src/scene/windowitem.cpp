@@ -7,7 +7,9 @@
 #include "scene/windowitem.h"
 #include "effect/effecthandler.h"
 #include "internalwindow.h"
+#include "scene/borderoutline.h"
 #include "scene/decorationitem.h"
+#include "scene/outlinedborderitem.h"
 #include "scene/shadowitem.h"
 #include "scene/surfaceitem_internal.h"
 #include "scene/surfaceitem_wayland.h"
@@ -62,6 +64,8 @@ WindowItem::WindowItem(Window *window, Item *parent)
     updateStackingOrder();
 
     connect(window, &Window::closed, this, &WindowItem::freeze);
+    connect(window, &Window::tilingBorderChanged, this, &WindowItem::updateTilingBorderItem);
+    updateTilingBorderItem();
 
     m_effectWindow = std::make_unique<EffectWindow>(this);
 }
@@ -205,6 +209,7 @@ void WindowItem::updateGeometry()
 {
     setPosition(m_window->pos());
     m_windowContainer->setSize(m_window->frameGeometry().size());
+    updateTilingBorderItem();
 }
 
 void WindowItem::addSurfaceItemDamageConnects(Item *item)
@@ -250,6 +255,38 @@ void WindowItem::updateSurfacePosition()
 void WindowItem::updateBorderRadius()
 {
     m_windowContainer->setBorderRadius(m_window->borderRadius());
+    updateTilingBorderItem();
+}
+
+void WindowItem::updateTilingBorderItem()
+{
+    if (m_window->isDeleted()) {
+        m_tilingBorderItem.reset();
+        return;
+    }
+
+    const TilingState &state = m_window->tilingState();
+    if (!state.showBorder || qFuzzyIsNull(state.borderThickness)) {
+        m_tilingBorderItem.reset();
+        return;
+    }
+
+    const QSizeF containerSize = m_windowContainer->size();
+    if (containerSize.isEmpty()) {
+        m_tilingBorderItem.reset();
+        return;
+    }
+
+    const RectF innerRect(QPointF(0, 0), containerSize);
+    const BorderOutline outline(state.borderThickness, state.borderColor, m_window->borderRadius());
+
+    if (!m_tilingBorderItem) {
+        m_tilingBorderItem = std::make_unique<OutlinedBorderItem>(innerRect, outline, this);
+        m_tilingBorderItem->stackAfter(m_windowContainer.get());
+    } else {
+        m_tilingBorderItem->setInnerRect(innerRect);
+        m_tilingBorderItem->setOutline(outline);
+    }
 }
 
 void WindowItem::updateShadowItem()

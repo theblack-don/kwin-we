@@ -23,10 +23,10 @@ TilingRules::TilingRules(const KConfigGroup &group)
 
 void TilingRules::load(const KConfigGroup &group)
 {
-    m_ignoreClasses = group.readEntry("IgnoreClass", QString()).split(',', Qt::SkipEmptyParts);
-    m_ignoreTitles = group.readEntry("IgnoreTitle", QString()).split(',', Qt::SkipEmptyParts);
-    m_floatingClasses = group.readEntry("FloatingClass", QString()).split(',', Qt::SkipEmptyParts);
-    m_floatingTitles = group.readEntry("FloatingTitle", QString()).split(',', Qt::SkipEmptyParts);
+    m_ignoreClasses = group.readEntry("IgnoreClass", QStringList());
+    m_ignoreTitles = group.readEntry("IgnoreTitle", QStringList());
+    m_floatingClasses = group.readEntry("FloatingClass", QStringList());
+    m_floatingTitles = group.readEntry("FloatingTitle", QStringList());
     m_floatUtility = group.readEntry("FloatUtility", true);
     m_floatDialog = group.readEntry("FloatDialog", true);
     m_floatTransient = group.readEntry("FloatTransient", true);

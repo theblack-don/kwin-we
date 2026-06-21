@@ -24,6 +24,7 @@ class Window;
 class DecorationItem;
 class EffectWindow;
 class InternalWindow;
+class OutlinedBorderItem;
 class Shadow;
 class ShadowItem;
 class SurfaceItem;
@@ -74,6 +75,7 @@ private Q_SLOTS:
     void updateSurfacePosition();
     void updateBorderRadius();
     void updateGeometry();
+    void updateTilingBorderItem();
     void updateOpacity();
     void updateStackingOrder();
     void addSurfaceItemDamageConnects(Item *item);
@@ -88,6 +90,7 @@ private:
     std::unique_ptr<SurfaceItem> m_surfaceItem;
     std::unique_ptr<DecorationItem> m_decorationItem;
     std::unique_ptr<ShadowItem> m_shadowItem;
+    std::unique_ptr<OutlinedBorderItem> m_tilingBorderItem;
     std::unique_ptr<EffectWindow> m_effectWindow;
     std::optional<int> m_elevation;
     int m_forceVisibleByHiddenCount = 0;

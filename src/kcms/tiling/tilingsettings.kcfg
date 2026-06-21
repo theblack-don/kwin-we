@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
+  <kcfgfile name="kwinrc"/>
+  <group name="Tiling">
+    <entry name="enabled" key="Enabled" type="Bool">
+      <label>Whether native tiling is enabled</label>
+      <default>true</default>
+    </entry>
+    <entry name="gapLeft" key="GapLeft" type="Int">
+      <label>Gap between the left screen edge and tiles</label>
+      <default>0</default>
+      <min>0</min>
+      <max>1000</max>
+    </entry>
+    <entry name="gapRight" key="GapRight" type="Int">
+      <label>Gap between the right screen edge and tiles</label>
+      <default>0</default>
+      <min>0</min>
+      <max>1000</max>
+    </entry>
+    <entry name="gapTop" key="GapTop" type="Int">
+      <label>Gap between the top screen edge and tiles</label>
+      <default>0</default>
+      <min>0</min>
+      <max>1000</max>
+    </entry>
+    <entry name="gapBottom" key="GapBottom" type="Int">
+      <label>Gap between the bottom screen edge and tiles</label>
+      <default>0</default>
+      <min>0</min>
+      <max>1000</max>
+    </entry>
+    <entry name="gapBetween" key="GapBetween" type="Int">
+      <label>Gap between adjacent tiles</label>
+      <default>0</default>
+      <min>0</min>
+      <max>1000</max>
+    </entry>
+    <entry name="tilingBorderMode" key="TilingBorderMode" type="Enum">
+      <label>Border display mode for tiled windows</label>
+      <choices>
+        <choice name="None"/>
+        <choice name="AllTiled"/>
+        <choice name="ActiveOnly"/>
+      </choices>
+      <default>None</default>
+    </entry>
+    <entry name="tilingBorderThickness" key="TilingBorderThickness" type="Int">
+      <label>Thickness of the tiling border</label>
+      <default>2</default>
+      <min>0</min>
+      <max>20</max>
+    </entry>
+  </group>
+  <group name="TilingRules">
+    <entry name="floatingClasses" key="FloatingClass" type="StringList">
+      <label>Window classes that should float by default</label>
+    </entry>
+    <entry name="ignoreClasses" key="IgnoreClass" type="StringList">
+      <label>Window classes that should be ignored by tiling</label>
+    </entry>
+    <entry name="floatUtility" key="FloatUtility" type="Bool">
+      <label>Whether utility windows should float</label>
+      <default>true</default>
+    </entry>
+    <entry name="floatDialog" key="FloatDialog" type="Bool">
+      <label>Whether dialog windows should float</label>
+      <default>true</default>
+    </entry>
+    <entry name="floatTransient" key="FloatTransient" type="Bool">
+      <label>Whether transient windows should float</label>
+      <default>true</default>
+    </entry>
+  </group>
+</kcfg>

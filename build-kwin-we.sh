@@ -5,10 +5,8 @@ set -euo pipefail
 # Usage: ./build-kwin-we.sh [install-prefix] [extra-cmake-args...]
 # Default install prefix is $HOME/.local
 #
-# This build uses a self-built KGlobalAccel/KGlobalAccelD installed under
-# $HOME/.local (from /home/don/Projects/kglobalaccel and
-# /home/don/Projects/kglobalacceld). CMAKE_PREFIX_PATH points there so the
-# newer library is picked up instead of the system one.
+# CMAKE_PREFIX_PATH points to INSTALL_PREFIX so any custom dependencies
+# installed there are picked up before system ones.
 
 cd "$(dirname "$0")"
 

@@ -8,6 +8,8 @@
 
 #include "kwin_export.h"
 
+#include <QColor>
+
 namespace KWin
 {
 
@@ -43,6 +45,21 @@ public:
      * Used to remember user choice across layout changes.
      */
     bool userToggledFloat = false;
+
+    /**
+     * Whether a native tiling border should be drawn around this window.
+     */
+    bool showBorder = false;
+
+    /**
+     * Thickness of the tiling border (in logical pixels).
+     */
+    qreal borderThickness = 0;
+
+    /**
+     * Color of the tiling border.
+     */
+    QColor borderColor;
 };
 
 } // namespace KWin

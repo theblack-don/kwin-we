@@ -29,6 +29,8 @@ Tile::Tile(TileManager *tiling, Tile *parent)
         m_padding = m_parentTile->padding();
         m_minimumSize = m_parentTile->m_minimumSize;
         m_desktop = m_parentTile->desktop();
+        m_gapBetween = m_parentTile->gapBetween();
+        m_gapMargins = m_parentTile->gapMargins();
     }
     connect(Workspace::self(), &Workspace::configChanged, this, &Tile::windowGeometryChanged);
     connect(Workspace::self(), &Workspace::windowRemoved, this, &Tile::unmanage);
@@ -170,12 +172,13 @@ RectF Tile::absoluteGeometryInScreen() const
 
 RectF Tile::windowGeometry() const
 {
-    // Apply half padding between tiles and full against the screen edges
+    // Apply half of the between-tile gap on shared edges and the configured
+    // edge margins on screen edges.
     QMarginsF effectiveMargins;
-    effectiveMargins.setLeft(m_relativeGeometry.left() > 0.0 ? m_padding / 2.0 : m_padding);
-    effectiveMargins.setTop(m_relativeGeometry.top() > 0.0 ? m_padding / 2.0 : m_padding);
-    effectiveMargins.setRight(m_relativeGeometry.right() < 1.0 ? m_padding / 2.0 : m_padding);
-    effectiveMargins.setBottom(m_relativeGeometry.bottom() < 1.0 ? m_padding / 2.0 : m_padding);
+    effectiveMargins.setLeft(m_relativeGeometry.left() > 0.0 ? m_gapBetween / 2.0 : m_gapMargins.left());
+    effectiveMargins.setTop(m_relativeGeometry.top() > 0.0 ? m_gapBetween / 2.0 : m_gapMargins.top());
+    effectiveMargins.setRight(m_relativeGeometry.right() < 1.0 ? m_gapBetween / 2.0 : m_gapMargins.right());
+    effectiveMargins.setBottom(m_relativeGeometry.bottom() < 1.0 ? m_gapBetween / 2.0 : m_gapMargins.bottom());
 
     const auto geom = absoluteGeometry();
     return geom.intersected(m_tiling->output()->geometryF()) - effectiveMargins;
@@ -251,6 +254,58 @@ void Tile::setPadding(qreal padding)
     }
 
     Q_EMIT paddingChanged(padding);
+    Q_EMIT windowGeometryChanged();
+}
+
+qreal Tile::gapBetween() const
+{
+    return m_gapBetween;
+}
+
+void Tile::setGapBetween(qreal gap)
+{
+    if (qFuzzyCompare(m_gapBetween, gap)) {
+        return;
+    }
+
+    m_gapBetween = gap;
+
+    for (auto *t : std::as_const(m_children)) {
+        t->setGapBetween(gap);
+    }
+    if (isActive()) {
+        for (auto *w : std::as_const(m_windows)) {
+            w->moveResize(windowGeometry());
+        }
+    }
+
+    Q_EMIT gapBetweenChanged(gap);
+    Q_EMIT windowGeometryChanged();
+}
+
+QMarginsF Tile::gapMargins() const
+{
+    return m_gapMargins;
+}
+
+void Tile::setGapMargins(const QMarginsF &margins)
+{
+    if (m_gapMargins == margins) {
+        return;
+    }
+
+    m_gapMargins = margins;
+
+    for (auto *t : std::as_const(m_children)) {
+        t->setGapMargins(margins);
+    }
+    if (isActive()) {
+        for (auto *w : std::as_const(m_windows)) {
+            w->moveResize(windowGeometry());
+        }
+    }
+
+    Q_EMIT gapMarginsChanged(margins);
     Q_EMIT windowGeometryChanged();
 }
 

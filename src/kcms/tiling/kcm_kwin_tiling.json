@@ -1,0 +1,16 @@
+{
+    "Categories": "Qt;KDE;X-KDE-settings-translations;",
+    "KPlugin": {
+        "BugReportUrl": "https://bugs.kde.org/enter_bug.cgi?product=systemsettings&component=kcm_kwin_tiling",
+        "Description": "Configure native window tiling behavior",
+        "FormFactors": [
+            "desktop"
+        ],
+        "Icon": "preferences-system-windows",
+        "Name": "Tiling",
+        "Name[en_GB]": "Tiling"
+    },
+    "X-KDE-Keywords": "tiling,window,gaps,floating,layout,master,stack",
+    "X-KDE-System-Settings-Parent-Category": "windowmanagement",
+    "X-KDE-Weight": 70
+}

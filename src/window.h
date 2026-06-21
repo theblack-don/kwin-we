@@ -1539,6 +1539,7 @@ Q_SIGNALS:
     void borderRadiusChanged();
     void excludeFromCaptureChanged();
     void decorationPolicyChanged();
+    void tilingBorderChanged();
 
 protected:
     Window();

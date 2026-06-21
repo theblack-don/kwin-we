@@ -18,6 +18,8 @@
 
 #include <KConfigGroup>
 #include <KSharedConfig>
+#include <QGuiApplication>
+#include <QPalette>
 #include <QtGlobal>
 
 namespace KWin
@@ -29,6 +31,12 @@ TilingController::TilingController(Workspace *workspace)
     , m_rules(std::make_unique<TilingRules>())
 {
     reconfigure();
+
+    if (m_workspace) {
+        connect(m_workspace, &Workspace::windowActivated, this, [this]() {
+            updateBorders();
+        });
+    }
 }
 
 TilingController::~TilingController() = default;
@@ -42,7 +50,25 @@ void TilingController::reconfigure()
     m_enabled = tilingGroup.readEntry("Enabled", true);
     m_rules->load(rulesGroup);
 
+    const int borderModeValue = tilingGroup.readEntry("TilingBorderMode", 0);
+    if (borderModeValue == 1) {
+        m_borderMode = BorderMode::AllTiled;
+    } else if (borderModeValue == 2) {
+        m_borderMode = BorderMode::ActiveOnly;
+    } else {
+        m_borderMode = BorderMode::None;
+    }
+    m_borderThickness = tilingGroup.readEntry("TilingBorderThickness", 2.0);
+    m_borderColor = QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight);
+
     initializeLayouts();
+
+    if (m_workspace) {
+        for (LogicalOutput *output : m_workspace->outputs()) {
+            applyGapSettingsToOutput(output);
+        }
+        updateBorders();
+    }
 }
 
 void TilingController::initializeLayouts()
@@ -69,6 +95,7 @@ void TilingController::onOutputAdded(LogicalOutput *output)
     for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
         setupDefaultLayoutEngine(manager, desktop);
     }
+    applyGapSettingsToOutput(output);
 }
 
 void TilingController::setupDefaultLayoutEngine(TileManager *manager, VirtualDesktop *desktop)
@@ -85,6 +112,66 @@ void TilingController::setupDefaultLayoutEngine(TileManager *manager, VirtualDes
 
     auto engine = std::make_unique<MasterStackLayoutEngine>(manager);
     manager->setLayoutEngine(desktop, std::move(engine));
+}
+
+void TilingController::updateBorders()
+{
+    if (!m_workspace) {
+        return;
+    }
+
+    Window *activeWindow = m_workspace->activeWindow();
+    const bool activeOnly = (m_borderMode == BorderMode::ActiveOnly);
+
+    for (Window *window : m_workspace->windows()) {
+        if (!window || window->isDeleted()) {
+            continue;
+        }
+
+        bool shouldShow = false;
+        if (m_borderMode != BorderMode::None && window->tilingState().mode == TilingState::Mode::Tiled) {
+            if (!activeOnly || window == activeWindow) {
+                shouldShow = true;
+            }
+        }
+
+        TilingState &state = window->tilingState();
+        if (state.showBorder != shouldShow || state.borderThickness != m_borderThickness || state.borderColor != m_borderColor) {
+            state.showBorder = shouldShow;
+            state.borderThickness = m_borderThickness;
+            state.borderColor = m_borderColor;
+            Q_EMIT window->tilingBorderChanged();
+        }
+    }
+}
+
+void TilingController::applyGapSettingsToOutput(LogicalOutput *output)
+{
+    if (!m_workspace || !output) {
+        return;
+    }
+
+    TileManager *manager = m_workspace->tileManager(output);
+    if (!manager) {
+        return;
+    }
+
+    KSharedConfigPtr config = KSharedConfig::openConfig(KWIN_CONFIG);
+    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+
+    const qreal gapBetween = tilingGroup.readEntry("GapBetween", 0);
+    const int gapLeft = tilingGroup.readEntry("GapLeft", 0);
+    const int gapRight = tilingGroup.readEntry("GapRight", 0);
+    const int gapTop = tilingGroup.readEntry("GapTop", 0);
+    const int gapBottom = tilingGroup.readEntry("GapBottom", 0);
+    const QMarginsF gapMargins(gapLeft, gapTop, gapRight, gapBottom);
+
+    for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
+        if (RootTile *root = manager->rootTile(desktop)) {
+            root->setGapBetween(gapBetween);
+            root->setGapMargins(gapMargins);
+        }
+    }
 }
 
 void TilingController::onWindowAdded(Window *window)
@@ -117,6 +204,8 @@ void TilingController::onWindowAdded(Window *window)
     connect(window, &Window::interactiveMoveResizeFinished,
             this, &TilingController::onInteractiveMoveResizeFinished,
             Qt::UniqueConnection);
+
+    updateBorders();
 }
 
 void TilingController::onWindowRemoved(Window *window)
@@ -125,6 +214,7 @@ void TilingController::onWindowRemoved(Window *window)
         return;
     }
     removeWindowFromLayouts(window);
+    updateBorders();
 }
 
 void TilingController::addWindowToLayout(Window *window, LogicalOutput *output, VirtualDesktop *desktop)
@@ -298,6 +388,8 @@ void TilingController::toggleFloating()
             : window->desktops().constFirst();
         addWindowToLayout(window, output, desktop);
     }
+
+    updateBorders();
 }
 
 void TilingController::onInteractiveMoveResizeStarted()
