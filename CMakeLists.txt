@@ -474,6 +474,15 @@ if (COMPILER_MISSING_FIELD_INITIALIZERS_SUPPORTED)
     add_compile_options(-Wno-missing-field-initializers)
 endif()
 
+# Qt's MOC-generated code includes KWin headers such as window.h whose first
+# declaration uses KWIN_EXPORT. qmetatype.h's is_complete<T> SFINAE check
+# trips on that incomplete type and produces a -Wsfinae-incomplete warning.
+# The diagnostic is harmless; suppress it for C++ only (it is invalid for C).
+check_cxx_compiler_flag(-Wno-sfinae-incomplete COMPILER_SFAINE_INCOMPLETE_SUPPORTED)
+if (COMPILER_SFAINE_INCOMPLETE_SUPPORTED)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-sfinae-incomplete>)
+endif()
+
 add_definitions(
     -DQT_NO_KEYWORDS
     -DQT_USE_QSTRINGBUILDER

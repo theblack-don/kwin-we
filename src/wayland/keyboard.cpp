@@ -196,7 +196,7 @@ void KeyboardInterface::setModifierFocusSurface(SurfaceInterface *surface)
 
 void KeyboardInterface::sendKey(quint32 key, KeyboardKeyState state, ClientConnection *client, uint32_t serial)
 {
-    quint32 waylandState;
+    quint32 waylandState = 0;
     switch (state) {
     case KeyboardKeyState::Pressed:
         waylandState = WL_KEYBOARD_KEY_STATE_PRESSED;

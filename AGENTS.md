@@ -245,6 +245,7 @@ env QT_PLUGIN_PATH="$(pwd):$QT_PLUGIN_PATH" \
    code.
 6. **Document breaking changes.** If an agent changes a config key, script API,
    or C++ ABI, note it in the task summary so release notes can be updated.
+7. **Fix Build Errors and Warnings** If There is a build error or warning when running the build or cmake commands we need to fix crucial errors and suppress not crucial ones. 
 
 ---
 

@@ -6,6 +6,13 @@
 
     SPDX-License-Identifier: GPL-2.0-or-later
 */
+// GCC 16 false-positively reports array-bounds violations when inlining the
+// destructor of std::shared_ptr<OutputMode> (which embeds ColorDescription via
+// make_shared's EBO). The destructor is correct; suppress the diagnostic.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
 #include "wayland_output.h"
 #include "color_manager.h"
 #include "compositor.h"
@@ -563,3 +570,7 @@ QList<OutputLayer *> WaylandOutput::outputLayers() const
 }
 
 #include "moc_wayland_output.cpp"
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

@@ -621,10 +621,26 @@ void TilingController::toggleFloating()
         state.mode = TilingState::Mode::Floating;
         state.userToggledFloat = true;
         removeWindowFromLayouts(window);
-        // Restore pre-tile geometry if available.
-        if (window->geometryRestore().isValid()) {
-            window->moveResize(window->geometryRestore());
+        // Float at a default size centered under the cursor, respecting min/max.
+        constexpr qreal defaultWidth = 800.0;
+        constexpr qreal defaultHeight = 600.0;
+        const QSizeF min = window->minSize();
+        const QSizeF max = window->maxSize();
+        qreal w = std::max(defaultWidth, min.width());
+        qreal h = std::max(defaultHeight, min.height());
+        if (max.width() > 0) {
+            w = std::min(w, max.width());
         }
+        if (max.height() > 0) {
+            h = std::min(h, max.height());
+        }
+        const QPointF cursorPos = Cursors::self()->mouse()->pos();
+        RectF geom(cursorPos.x() - w / 2, cursorPos.y() - h / 2, w, h);
+        if (m_workspace) {
+            const RectF screenArea = m_workspace->clientArea(PlacementArea, window);
+            geom = window->keepInArea(geom, screenArea);
+        }
+        window->moveResize(geom);
     } else {
         state.mode = TilingState::Mode::Tiled;
         state.userToggledFloat = false;

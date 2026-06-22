@@ -26,15 +26,14 @@ KWin is an easy to use, but flexible, compositor for Wayland on Linux. Its prima
 > All AI-generated content has been reviewed by the maintainers, but it has **not** been audited to the same standard as hand-written code. You may encounter:
 > - Subtle bugs or edge cases that a human author would have caught.
 > - Stylistic inconsistencies with the surrounding KWin codebase.
-> - Security-sensitive code paths that have not been hardened.
 >
-> **If you are not comfortable running code that was written (in whole or in part) by an AI, please do not use this project.** By using KineticWE you acknowledge and accept this.
+> **If you are not comfortable running code that was written (in whole or in part) by an AI, do not use this project and keep it movin.** By using KineticWE you acknowledge and accept this.
 
 ---
 
 ## Installing KineticWE
 
-Convenience scripts are provided that install all dependencies, build kwin-we, install the [noctalia-shell](https://github.com/noctalia-dev/noctalia), and set up session files so you can launch KineticWE from a TTY or a display greeter such as SDDM.
+Convenience scripts are provided that install all dependencies, build kwin-we, install the [noctalia-shell](https://github.com/noctalia-dev/noctalia), and set up session files so you can launch KineticWE from a TTY.
 
 Pick the script that matches your distribution:
 
