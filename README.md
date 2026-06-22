@@ -20,12 +20,6 @@ By default, binaries are installed to `$HOME/.local`. You can change this with t
 INSTALL_PREFIX=/opt/kineticwe ./install-fedora.sh
 ```
 
-You can also point the script at a different noctalia-shell repository:
-
-```bash
-NOCTALIA_URL=https://git.example.com/noctalia.git ./install-fedora.sh
-```
-
 After installation:
 
 - Start KineticWE from a TTY with:
