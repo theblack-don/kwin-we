@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+X-KDE-AliasFor=systemsettings
+Exec=systemsettings kcm_colors
+Icon=preferences-desktop-color
+Name=Colors

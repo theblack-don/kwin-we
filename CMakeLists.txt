@@ -361,7 +361,30 @@ else()
 endif()
 
 if(KWIN_BUILD_GLOBALSHORTCUTS)
-    find_package(KGlobalAccelD REQUIRED)
+    # kglobalacceld is shipped separately from kglobalaccel in KF6 and may
+    # be missing or named differently on some distros. Find it via the
+    # custom module in cmake/modules/FindKGlobalAccelD.cmake which tries
+    # the upstream CMake config first, then pkg-config, then a manual
+    # search. If it is not available, we disable the in-process daemon
+    # integration but keep the client-side KGlobalAccel (which comes from
+    # KF6::GlobalAccel above) so shortcuts still register correctly.
+    find_package(KGlobalAccelD)
+    set_package_properties(KGlobalAccelD PROPERTIES
+        URL "https://invent.kde.org/plasma/kglobalacceld"
+        DESCRIPTION "kglobalacceld - KDE global shortcuts daemon"
+        TYPE RUNTIME
+        PURPOSE "Provides the in-process global shortcuts daemon used by KWin"
+    )
+    if(NOT KGlobalAccelD_FOUND)
+        message(WARNING
+            "KGlobalAccelD (kglobalacceld) was not found. KWin will be built WITHOUT "
+            "the in-process global shortcuts daemon integration; global shortcuts "
+            "will still register through the client-side KF6::GlobalAccel. "
+            "To enable the daemon integration, install the kglobalacceld development "
+            "package for your distribution (e.g. kf6-kglobalacceld-devel on Fedora, "
+            "kglobalacceld on Arch, libkglobalacceld6 on openSUSE).")
+        set(KWIN_BUILD_GLOBALSHORTCUTS OFF CACHE BOOL "" FORCE)
+    endif()
 endif()
 
 pkg_check_modules(libdisplayinfo REQUIRED IMPORTED_TARGET libdisplay-info>=0.2.0)

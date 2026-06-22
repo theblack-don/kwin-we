@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+Exec=breeze-settings6 -style
+Icon=breeze
+Name=Breeze Widget Style

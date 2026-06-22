@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+X-KDE-AliasFor=systemsettings
+Exec=systemsettings kcm_desktoptheme
+Icon=breeze
+Name=Plasma Style

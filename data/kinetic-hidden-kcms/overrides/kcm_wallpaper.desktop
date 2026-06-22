@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+X-KDE-AliasFor=systemsettings
+Exec=systemsettings kcm_wallpaper
+Icon=preferences-desktop-wallpaper
+Name=Wallpaper

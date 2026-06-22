@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+Exec=kcolorschemeeditor
+Icon=preferences-desktop-color
+Name=Color Scheme Editor

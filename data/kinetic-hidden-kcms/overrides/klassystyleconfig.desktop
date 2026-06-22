@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Hidden=true
+Exec=klassystyleconfig
+Icon=preferences-desktop-theme-applications
+Name=Klassy Widget Style

@@ -75,7 +75,8 @@ install_dependencies() {
         extra-cmake-modules \
         kf6-kauth-devel kf6-kcolorscheme-devel kf6-kconfig-devel \
         kf6-kcoreaddons-devel kf6-kcrash-devel kf6-kdbusaddons-devel \
-        kf6-kglobalaccel-devel kf6-kguiaddons-devel kf6-ki18n-devel \
+        kf6-kglobalaccel-devel kf6-kglobalacceld-devel \
+        kf6-kguiaddons-devel kf6-ki18n-devel \
         kf6-kidletime-devel kf6-kpackage-devel kf6-kservice-devel \
         kf6-ksvg-devel kf6-kwidgetsaddons-devel kf6-kwindowsystem-devel \
         kf6-kdeclarative-devel kf6-kcmutils-devel kf6-knewstuff-devel \
