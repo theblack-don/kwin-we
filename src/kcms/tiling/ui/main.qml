@@ -354,7 +354,9 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18n("Active border source:")
             model: [
                 i18n("Custom color"),
-                i18n("System accent")
+                i18n("System accent"),
+                i18n("Noctalia primary"),
+                i18n("Noctalia accent")
             ]
             currentIndex: kcm.settings.tilingBorderColorSourceActive
             onActivated: kcm.settings.tilingBorderColorSourceActive = currentIndex
@@ -381,7 +383,18 @@ KCM.SimpleKCM {
         QQC2.Label {
             visible: kcm.settings.tilingBorderColorSourceActive !== 0
             Kirigami.FormData.label: i18n("Active color preview:")
-            text: i18nc("@info", "Follows the system accent color.")
+            text: {
+                switch (kcm.settings.tilingBorderColorSourceActive) {
+                case 1:
+                    return i18nc("@info", "Follows the system accent color.");
+                case 2:
+                    return i18nc("@info", "Follows the Noctalia primary color.");
+                case 3:
+                    return i18nc("@info", "Follows the Noctalia accent color.");
+                default:
+                    return "";
+                }
+            }
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
             opacity: 0.7
@@ -393,7 +406,9 @@ KCM.SimpleKCM {
             model: [
                 i18n("Custom color"),
                 i18n("System accent"),
-                i18n("System accent (faded)")
+                i18n("System accent (faded)"),
+                i18n("Noctalia primary"),
+                i18n("Noctalia accent")
             ]
             currentIndex: kcm.settings.tilingBorderColorSourceInactive
             onActivated: kcm.settings.tilingBorderColorSourceInactive = currentIndex
@@ -420,9 +435,20 @@ KCM.SimpleKCM {
         QQC2.Label {
             visible: kcm.settings.tilingBorderColorSourceInactive !== 0
             Kirigami.FormData.label: i18n("Inactive color preview:")
-            text: kcm.settings.tilingBorderColorSourceInactive === 2
-                ? i18nc("@info", "System accent at 50% alpha.")
-                : i18nc("@info", "Follows the system accent color.")
+            text: {
+                switch (kcm.settings.tilingBorderColorSourceInactive) {
+                case 1:
+                    return i18nc("@info", "Follows the system accent color.");
+                case 2:
+                    return i18nc("@info", "System accent at 50% alpha.");
+                case 3:
+                    return i18nc("@info", "Follows the Noctalia primary color.");
+                case 4:
+                    return i18nc("@info", "Follows the Noctalia accent color.");
+                default:
+                    return "";
+                }
+            }
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
             opacity: 0.7

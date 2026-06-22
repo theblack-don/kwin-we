@@ -22,6 +22,7 @@
 #include <KSharedConfig>
 #include <QGuiApplication>
 #include <QPalette>
+#include <QStandardPaths>
 #include <QtGlobal>
 
 namespace KWin
@@ -55,6 +56,29 @@ TilingController::TilingController(Workspace *workspace)
             updateBorders();
         });
     }
+
+    // Watch Noctalia color scheme for real-time border updates
+    const QString noctaliaPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("color-schemes/noctalia.colors"));
+    if (!noctaliaPath.isEmpty()) {
+        KSharedConfigPtr noctaliaConfig = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
+        m_noctaliaWatcher = KConfigWatcher::create(noctaliaConfig);
+        connect(m_noctaliaWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
+            readNoctaliaColors();
+            if (usesNoctaliaSource()) {
+                updateBorders();
+            }
+        });
+        readNoctaliaColors();
+    }
+
+    // Watch kdeglobals for system accent color changes
+    KSharedConfigPtr kdeglobals = KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::FullConfig);
+    kdeglobalsWatcher = KConfigWatcher::create(kdeglobals);
+    connect(kdeglobalsWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
+        if (m_colorSourceActive == ColorSource::SystemAccent || m_colorSourceInactive == ColorSource::SystemAccent || m_colorSourceInactive == ColorSource::SystemAccentFaded) {
+            updateBorders();
+        }
+    });
 }
 
 TilingController::~TilingController() = default;
@@ -88,6 +112,10 @@ void TilingController::reconfigure()
     const QString activeSourceString = tilingGroup.readEntry("TilingBorderColorSourceActive", QStringLiteral("SystemAccent"));
     if (activeSourceString == QLatin1String("Custom")) {
         m_colorSourceActive = ColorSource::Custom;
+    } else if (activeSourceString == QLatin1String("NoctaliaPrimary")) {
+        m_colorSourceActive = ColorSource::NoctaliaPrimary;
+    } else if (activeSourceString == QLatin1String("NoctaliaAccent")) {
+        m_colorSourceActive = ColorSource::NoctaliaAccent;
     } else {
         m_colorSourceActive = ColorSource::SystemAccent;
     }
@@ -96,6 +124,10 @@ void TilingController::reconfigure()
         m_colorSourceInactive = ColorSource::Custom;
     } else if (inactiveSourceString == QLatin1String("SystemAccent")) {
         m_colorSourceInactive = ColorSource::SystemAccent;
+    } else if (inactiveSourceString == QLatin1String("NoctaliaPrimary")) {
+        m_colorSourceInactive = ColorSource::NoctaliaPrimary;
+    } else if (inactiveSourceString == QLatin1String("NoctaliaAccent")) {
+        m_colorSourceInactive = ColorSource::NoctaliaAccent;
     } else {
         m_colorSourceInactive = ColorSource::SystemAccentFaded;
     }
@@ -261,10 +293,40 @@ QColor TilingController::resolveColor(ColorSource source, const QColor &custom) 
         }
         return accent;
     }
+    case ColorSource::NoctaliaPrimary:
+        return m_noctaliaPrimaryColor.isValid() ? m_noctaliaPrimaryColor : custom;
+    case ColorSource::NoctaliaAccent:
+        return m_noctaliaAccentColor.isValid() ? m_noctaliaAccentColor : custom;
     case ColorSource::Custom:
     default:
         return custom;
     }
+}
+
+void TilingController::readNoctaliaColors()
+{
+    const QString noctaliaPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("color-schemes/noctalia.colors"));
+    if (noctaliaPath.isEmpty()) {
+        return;
+    }
+
+    KSharedConfigPtr config = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
+
+    // Noctalia primary: Colors:Selection BackgroundNormal
+    KConfigGroup selectionGroup(config, QStringLiteral("Colors:Selection"));
+    m_noctaliaPrimaryColor = selectionGroup.readEntry("BackgroundNormal", QColor());
+
+    // Noctalia accent: Colors:Button ForegroundPositive
+    KConfigGroup buttonGroup(config, QStringLiteral("Colors:Button"));
+    m_noctaliaAccentColor = buttonGroup.readEntry("ForegroundPositive", QColor());
+}
+
+bool TilingController::usesNoctaliaSource() const
+{
+    return m_colorSourceActive == ColorSource::NoctaliaPrimary
+        || m_colorSourceActive == ColorSource::NoctaliaAccent
+        || m_colorSourceInactive == ColorSource::NoctaliaPrimary
+        || m_colorSourceInactive == ColorSource::NoctaliaAccent;
 }
 
 void TilingController::applyCornerRadius(Window *window)
@@ -669,21 +731,12 @@ void TilingController::onWindowDesktopsChanged(Window *window)
         return;
     }
 
-    // Remove the window from whichever layout engine currently manages it.
-    // The engine will reflow, so the remaining tiled windows on the source
-    // desktop auto-fill the freed slot.
-    LayoutEngine *currentEngine = layoutEngineForWindow(window);
-    VirtualDesktop *oldDesktop = nullptr;
-    if (currentEngine) {
-        LogicalOutput *oldOutput = nullptr;
-        layoutEngineForWindow(window, &oldOutput, &oldDesktop);
-        if (oldDesktop == newDesktop) {
-            // Desktop set changed but the managed desktop is the same
-            // (e.g. a no-op toggle). Nothing to do.
-            return;
-        }
-        currentEngine->removeWindow(window);
-    }
+    // Remove the window from ALL layout engines across all outputs and desktops.
+    // Using removeWindowFromLayouts() ensures no stale references remain, even
+    // if the window was somehow registered in an unexpected engine (e.g. due to
+    // output changes during the move operation). Each engine's removeWindow() is
+    // a no-op if the window isn't present, so this is safe.
+    removeWindowFromLayouts(window);
 
     LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
     if (!output) {

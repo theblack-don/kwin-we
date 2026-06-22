@@ -67,6 +67,8 @@
       <choices>
         <choice name="Custom"/>
         <choice name="SystemAccent"/>
+        <choice name="NoctaliaPrimary"/>
+        <choice name="NoctaliaAccent"/>
       </choices>
       <default>SystemAccent</default>
     </entry>
@@ -76,6 +78,8 @@
         <choice name="Custom"/>
         <choice name="SystemAccent"/>
         <choice name="SystemAccentFaded"/>
+        <choice name="NoctaliaPrimary"/>
+        <choice name="NoctaliaAccent"/>
       </choices>
       <default>SystemAccentFaded</default>
     </entry>

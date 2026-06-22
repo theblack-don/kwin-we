@@ -139,11 +139,8 @@ void Tile::setRelativeGeometry(const RectF &geom)
     Q_EMIT absoluteGeometryChanged();
     Q_EMIT windowGeometryChanged();
 
-    if (isActive()) {
-        for (auto *w : std::as_const(m_windows)) {
-            // Resize only if we are the currently managing tile for that window
-            w->moveResize(windowGeometry());
-        }
+    for (auto *w : std::as_const(m_windows)) {
+        w->moveResize(windowGeometry());
     }
 }
 

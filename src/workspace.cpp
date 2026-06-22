@@ -1117,7 +1117,7 @@ void Workspace::updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop 
     --block_focus;
 
     for (Window *window : std::as_const(m_windows)) {
-        if (!window->isOnDesktop(newDesktop) || !window->isOnOutput(output)) {
+        if (!window->isOnDesktop(newDesktop)) {
             continue;
         }
 
@@ -1128,6 +1128,12 @@ void Workspace::updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop 
             }
         }
 
+        // For tiled windows, always update geometry from the tile even if the
+        // requested tile hasn't changed, because the tile's geometry may have
+        // been updated by a reflow (e.g. when another window was removed).
+        if (tile && window->tilingState().mode == TilingState::Mode::Tiled) {
+            window->moveResize(tile->windowGeometry());
+        }
         window->requestTile(tile);
     }
 

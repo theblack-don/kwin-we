@@ -11,6 +11,8 @@
 #include "tilingstate.h"
 #include "tiles/layoutengine.h"
 
+#include <KConfigWatcher>
+
 #include <QColor>
 #include <QHash>
 #include <QObject>
@@ -143,6 +145,8 @@ private:
         Custom,
         SystemAccent,
         SystemAccentFaded,
+        NoctaliaPrimary,
+        NoctaliaAccent,
     };
     ColorSource m_colorSourceActive = ColorSource::SystemAccent;
     ColorSource m_colorSourceInactive = ColorSource::SystemAccentFaded;
@@ -151,6 +155,14 @@ private:
 
     QColor resolveColor(ColorSource source, const QColor &custom) const;
     void applyCornerRadius(Window *window);
+
+    void readNoctaliaColors();
+    bool usesNoctaliaSource() const;
+
+    QColor m_noctaliaPrimaryColor;
+    QColor m_noctaliaAccentColor;
+    KConfigWatcher::Ptr m_noctaliaWatcher;
+    KConfigWatcher::Ptr kdeglobalsWatcher;
 
     struct MoveContext {
         QPointer<LayoutEngine> engine;
