@@ -3,14 +3,14 @@ set -euo pipefail
 
 # =============================================================================
 # KineticWE - A Kwin Window Environment
-# Fedora Install Script
+# Arch Linux Install Script
 # =============================================================================
 # This script installs all dependencies, builds kwin-we, installs noctalia-shell,
 # and sets up session files so you can launch KineticWE from a TTY or a
 # display greeter (SDDM, etc.).
 #
 # Usage:
-#   ./install-fedora.sh
+#   ./install-arch.sh
 #
 # Environment variables:
 #   INSTALL_PREFIX  - Where to install binaries (default: $HOME/.local)
@@ -37,9 +37,9 @@ step()  { echo -e "${BLUE}[STEP]${NC}  $*"; }
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
-check_fedora() {
-    if [[ ! -f /etc/fedora-release ]]; then
-        warn "This script is designed for Fedora. Continuing anyway..."
+check_arch() {
+    if [[ ! -f /etc/arch-release ]]; then
+        warn "This script is designed for Arch Linux. Continuing anyway..."
     fi
 }
 
@@ -58,54 +58,48 @@ detect_install_sudo() {
 }
 
 # ---------------------------------------------------------------------------
-# Install system dependencies via dnf
+# Install system dependencies via pacman
 # ---------------------------------------------------------------------------
 install_dependencies() {
     step "Installing system dependencies..."
 
-    # Some package names differ slightly between Fedora versions;
-    # --skip-unavailable ignores packages that are not in the enabled
-    # repositories or that are already installed, so re-running this
+    # --needed skips packages that are already up to date, so re-running this
     # script is safe.
-    sudo dnf install -y --skip-unavailable \
-        cmake ninja-build gcc-c++ git meson just \
-        qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
-        qt6-qtsvg-devel qt6-qt5compat-devel qt6-qtwayland-devel \
-        qt6-qttools-devel \
+    #
+    # Notes on package choices:
+    #   - Arch unifies runtime and headers into a single package (no -devel
+    #     split), so kwayland, kdecoration, kscreenlocker, etc. include the
+    #     headers needed to build against them.
+    #   - mesa provides libGLES, libEGL and libgbm on Arch.
+    #   - xcb-util is provided by the libxcb package family (e.g. xcb-util-wm).
+    sudo pacman -S --needed --noconfirm \
+        cmake ninja gcc git meson just pkgconf \
+        qt6-base qt6-declarative qt6-svg qt6-5compat qt6-wayland qt6-tools \
         extra-cmake-modules \
-        kf6-kauth-devel kf6-kcolorscheme-devel kf6-kconfig-devel \
-        kf6-kcoreaddons-devel kf6-kcrash-devel kf6-kdbusaddons-devel \
-        kf6-kglobalaccel-devel kf6-kglobalacceld-devel \
-        kf6-kguiaddons-devel kf6-ki18n-devel \
-        kf6-kidletime-devel kf6-kpackage-devel kf6-kservice-devel \
-        kf6-ksvg-devel kf6-kwidgetsaddons-devel kf6-kwindowsystem-devel \
-        kf6-kdeclarative-devel kf6-kcmutils-devel kf6-knewstuff-devel \
-        kf6-kxmlgui-devel kf6-krunner-devel kf6-knotifications-devel \
-        kf6-kirigami \
-        kwayland-devel kdecoration-devel kscreenlocker-devel \
-        knighttime-devel plasma-wayland-protocols-devel \
-        plasma-activities-devel libplasma-devel plasma-workspace-devel \
-        plasma-milou aurorae plasma-breeze \
-        libepoxy-devel vulkan-loader-devel vulkan-headers \
-        wayland-devel wayland-protocols-devel \
-        libxkbcommon-devel libxkbcommon-x11-devel \
-        libinput-devel libdrm-devel mesa-libgbm-devel \
-        libdisplay-info-devel lcms2-devel libxcvt-devel \
-        libcanberra-devel \
-        libX11-devel libxcb-devel xcb-util-keysyms-devel \
-        xcb-util-cursor-devel xcb-util-devel xcb-util-wm-devel \
-        xcb-util-image-devel xcb-util-renderutil-devel \
-        xorg-x11-server-Xwayland \
-        systemd-devel pipewire-devel libevdev-devel \
-        qaccessibilityclient-qt6-devel pkgconf-pkg-config hwdata \
-        libEGL-devel mesa-libGLES-devel freetype-devel fontconfig-devel \
-        cairo-devel pango-devel harfbuzz-devel glib2-devel \
-        sdbus-cpp-devel pam-devel polkit-devel libcurl-devel \
-        libwebp-devel librsvg2-devel libqalculate-devel libxml2-devel \
-        jemalloc-devel \
+        kauth kcolorscheme kconfig kcoreaddons kcrash kdbusaddons \
+        kglobalaccel kglobalacceld kguiaddons ki18n kidletime kpackage \
+        kservice ksvg kwidgetsaddons kwindowsystem kdeclarative kcmutils \
+        knewstuff kxmlgui krunner knotifications kirigami \
+        kwayland kdecoration kscreenlocker knighttime plasma-wayland-protocols \
+        plasma-activities libplasma plasma-workspace milou aurorae breeze \
+        libepoxy vulkan-headers vulkan-icd-loader libglvnd \
+        wayland wayland-protocols \
+        libxkbcommon libxkbcommon-x11 \
+        libinput libdrm mesa \
+        libdisplay-info lcms2 libxcvt \
+        libcanberra \
+        libx11 libxcb xcb-util-keysyms xcb-util-cursor xcb-util-wm \
+        xcb-util-image xcb-util-renderutil \
+        xorg-xwayland \
+        systemd pipewire libevdev \
+        libqaccessibilityclient-qt6 hwdata \
+        freetype2 fontconfig \
+        cairo pango harfbuzz glib2 \
+        sdbus-cpp pam polkit curl libwebp librsvg libqalculate libxml2 \
+        jemalloc \
         xdg-desktop-portal xdg-desktop-portal-kde || {
-            error "Failed to install some dependencies. If you are not on Fedora,"
-            error "please install the equivalent packages for your distribution."
+            error "Failed to install some dependencies. If you are not on Arch,"
+            error "please use the install script that matches your distribution."
             exit 1
         }
 
@@ -211,7 +205,7 @@ ensure_path_hint() {
         warn "$INSTALL_PREFIX/bin is not in your PATH."
         warn "Add the following line to your shell profile (~/.bashrc or ~/.zshrc):"
         warn "  export PATH=\"$INSTALL_PREFIX/bin:\$PATH\""
-        warn "  export LD_LIBRARY_PATH=\"$INSTALL_PREFIX/lib64:\$LD_LIBRARY_PATH\""
+        warn "  export LD_LIBRARY_PATH=\"$INSTALL_PREFIX/lib:\$LD_LIBRARY_PATH\""
     fi
 }
 
@@ -220,12 +214,12 @@ ensure_path_hint() {
 # ---------------------------------------------------------------------------
 main() {
     echo "=========================================="
-    echo "  KineticWE Fedora Installer"
+    echo "  KineticWE Arch Linux Installer"
     echo "  Install prefix: $INSTALL_PREFIX"
     echo "=========================================="
     echo
 
-    check_fedora
+    check_arch
     check_sudo
     install_dependencies
     build_kwin_we

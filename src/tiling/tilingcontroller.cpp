@@ -18,6 +18,7 @@
 #include "window.h"
 #include "workspace.h"
 
+#include <KColorScheme>
 #include <KConfigGroup>
 #include <KSharedConfig>
 #include <QGuiApplication>
@@ -57,28 +58,35 @@ TilingController::TilingController(Workspace *workspace)
         });
     }
 
-    // Watch Noctalia color scheme for real-time border updates
+    // Hold long-lived KSharedConfig handles for the two config files we
+    // tail. KSharedConfig caches parsed values in memory; without
+    // reparseConfiguration() the second read after an external edit would
+    // see stale data even though the watcher fired.
     const QString noctaliaPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("color-schemes/noctalia.colors"));
     if (!noctaliaPath.isEmpty()) {
-        KSharedConfigPtr noctaliaConfig = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
-        m_noctaliaWatcher = KConfigWatcher::create(noctaliaConfig);
+        m_noctaliaConfig = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
+        m_noctaliaWatcher = KConfigWatcher::create(m_noctaliaConfig);
         connect(m_noctaliaWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
             readNoctaliaColors();
             if (usesNoctaliaSource()) {
                 updateBorders();
             }
         });
-        readNoctaliaColors();
     }
-
-    // Watch kdeglobals for system accent color changes
-    KSharedConfigPtr kdeglobals = KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::FullConfig);
-    kdeglobalsWatcher = KConfigWatcher::create(kdeglobals);
-    connect(kdeglobalsWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
-        if (m_colorSourceActive == ColorSource::SystemAccent || m_colorSourceInactive == ColorSource::SystemAccent || m_colorSourceInactive == ColorSource::SystemAccentFaded) {
+    m_kdeglobalsConfig = KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::FullConfig);
+    m_kdeglobalsWatcher = KConfigWatcher::create(m_kdeglobalsConfig);
+    connect(m_kdeglobalsWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
+        readSystemAccent();
+        if (m_colorSourceActive == ColorSource::SystemAccent
+            || m_colorSourceInactive == ColorSource::SystemAccent
+            || m_colorSourceInactive == ColorSource::SystemAccentFaded) {
             updateBorders();
         }
     });
+
+    // Initial reads so the very first border paint already has the right color.
+    readNoctaliaColors();
+    readSystemAccent();
 }
 
 TilingController::~TilingController() = default;
@@ -287,7 +295,7 @@ QColor TilingController::resolveColor(ColorSource source, const QColor &custom) 
     switch (source) {
     case ColorSource::SystemAccent:
     case ColorSource::SystemAccentFaded: {
-        QColor accent = QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight);
+        QColor accent = m_cachedSystemAccent;
         if (source == ColorSource::SystemAccentFaded) {
             accent.setAlpha(128);
         }
@@ -305,20 +313,37 @@ QColor TilingController::resolveColor(ColorSource source, const QColor &custom) 
 
 void TilingController::readNoctaliaColors()
 {
-    const QString noctaliaPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("color-schemes/noctalia.colors"));
-    if (noctaliaPath.isEmpty()) {
+    if (!m_noctaliaConfig) {
         return;
     }
-
-    KSharedConfigPtr config = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
+    // KSharedConfig caches the parsed file in memory; reparseConfiguration()
+    // forces a re-read so we see changes the user made in noctalia since the
+    // last call. Without this, the second-and-onward watcher callbacks
+    // would read stale values and the border would never update live.
+    m_noctaliaConfig->reparseConfiguration();
 
     // Noctalia primary: Colors:Selection BackgroundNormal
-    KConfigGroup selectionGroup(config, QStringLiteral("Colors:Selection"));
+    KConfigGroup selectionGroup(m_noctaliaConfig, QStringLiteral("Colors:Selection"));
     m_noctaliaPrimaryColor = selectionGroup.readEntry("BackgroundNormal", QColor());
 
     // Noctalia accent: Colors:Button ForegroundPositive
-    KConfigGroup buttonGroup(config, QStringLiteral("Colors:Button"));
+    KConfigGroup buttonGroup(m_noctaliaConfig, QStringLiteral("Colors:Button"));
     m_noctaliaAccentColor = buttonGroup.readEntry("ForegroundPositive", QColor());
+}
+
+void TilingController::readSystemAccent()
+{
+    if (!m_kdeglobalsConfig) {
+        m_kdeglobalsConfig = KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::FullConfig);
+    }
+    // Same staleness pitfall as readNoctaliaColors().
+    m_kdeglobalsConfig->reparseConfiguration();
+    // KColorScheme::createApplicationPalette reads [Colors:Selection] and
+    // friends from the given config, then returns a QPalette that
+    // QPalette::Highlight tracks correctly. Using QGuiApplication::palette()
+    // directly would return KWin's default blue, not the user's scheme.
+    const QPalette palette = KColorScheme::createApplicationPalette(m_kdeglobalsConfig);
+    m_cachedSystemAccent = palette.color(QPalette::Active, QPalette::Highlight);
 }
 
 bool TilingController::usesNoctaliaSource() const

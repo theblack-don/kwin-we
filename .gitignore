@@ -28,3 +28,8 @@ CMakeLists.txt.user*
 .cache
 .vscode
 .qmlls.ini
+
+# Nix build outputs
+result
+result-*
+/.direnv/

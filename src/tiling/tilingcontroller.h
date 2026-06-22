@@ -12,6 +12,7 @@
 #include "tiles/layoutengine.h"
 
 #include <KConfigWatcher>
+#include <KSharedConfig>
 
 #include <QColor>
 #include <QHash>
@@ -157,12 +158,19 @@ private:
     void applyCornerRadius(Window *window);
 
     void readNoctaliaColors();
+    void readSystemAccent();
     bool usesNoctaliaSource() const;
 
     QColor m_noctaliaPrimaryColor;
     QColor m_noctaliaAccentColor;
+    QColor m_cachedSystemAccent;
+    // KSharedConfig instances are cached per-name. We hold long-lived
+    // references so we can call reparseConfiguration() when the underlying
+    // file changes (via KConfigWatcher), and so all reads see fresh data.
+    KSharedConfigPtr m_noctaliaConfig;
+    KSharedConfigPtr m_kdeglobalsConfig;
     KConfigWatcher::Ptr m_noctaliaWatcher;
-    KConfigWatcher::Ptr kdeglobalsWatcher;
+    KConfigWatcher::Ptr m_kdeglobalsWatcher;
 
     struct MoveContext {
         QPointer<LayoutEngine> engine;

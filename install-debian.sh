@@ -3,14 +3,18 @@ set -euo pipefail
 
 # =============================================================================
 # KineticWE - A Kwin Window Environment
-# Fedora Install Script
+# Debian / Ubuntu Install Script
 # =============================================================================
 # This script installs all dependencies, builds kwin-we, installs noctalia-shell,
 # and sets up session files so you can launch KineticWE from a TTY or a
 # display greeter (SDDM, etc.).
 #
+# Tested on Debian 13 (Trixie) / Ubuntu 24.04+ with Plasma 6 backports enabled.
+# For older releases, you may need to add a PPA or backports repo so that
+# KF6, Qt6 and Plasma 6 packages are available.
+#
 # Usage:
-#   ./install-fedora.sh
+#   ./install-debian.sh
 #
 # Environment variables:
 #   INSTALL_PREFIX  - Where to install binaries (default: $HOME/.local)
@@ -37,9 +41,10 @@ step()  { echo -e "${BLUE}[STEP]${NC}  $*"; }
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
-check_fedora() {
-    if [[ ! -f /etc/fedora-release ]]; then
-        warn "This script is designed for Fedora. Continuing anyway..."
+check_debian() {
+    if ! command -v apt-get >/dev/null 2>&1; then
+        warn "This script is designed for Debian/Ubuntu (uses apt-get)."
+        warn "Continuing anyway..."
     fi
 }
 
@@ -58,54 +63,76 @@ detect_install_sudo() {
 }
 
 # ---------------------------------------------------------------------------
-# Install system dependencies via dnf
+# Install system dependencies via apt
 # ---------------------------------------------------------------------------
 install_dependencies() {
     step "Installing system dependencies..."
 
-    # Some package names differ slightly between Fedora versions;
-    # --skip-unavailable ignores packages that are not in the enabled
-    # repositories or that are already installed, so re-running this
-    # script is safe.
-    sudo dnf install -y --skip-unavailable \
-        cmake ninja-build gcc-c++ git meson just \
-        qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
-        qt6-qtsvg-devel qt6-qt5compat-devel qt6-qtwayland-devel \
-        qt6-qttools-devel \
+    sudo apt-get update
+
+    # Notes on package choices:
+    #   - KF6 packages are kf6-<name>-dev on Debian Trixie / Ubuntu 24.04+.
+    #     If your distro does not have them yet, enable backports (Debian) or
+    #     the Kubuntu/backports PPA (Ubuntu).
+    #   - Kirigami for KF6 ships as the "kirigami" package (no -dev split).
+    #   - milou / aurorae / breeze are the runtime Plasma components; on
+    #     Debian/Ubuntu they are NOT prefixed with "plasma-".
+    #   - libplasma, plasma-activities and plasma-workspace ship both the
+    #     runtime and the development headers in the same source package;
+    #     the headers are in the -dev packages.
+    #   - xcb-util is provided by libxcb-util0-dev, xcb-util-wm by
+    #     libxcb-icccm4-dev, etc. (Debian splits the upstream xcb-util
+    #     project into separate libraries).
+    #   - libgbm and libEGL/libGLES ship from the mesa package family.
+    #   - sdbus-cpp is not packaged in Debian/Ubuntu official repos; it is
+    #     only used by a small portion of the codebase and the build will
+    #     succeed without it. Install it from a PPA or build it from source
+    #     if you need the full feature set.
+    #   - We use --no-install-recommends to keep the install lean; if a
+    #     component is missing at runtime, you can install the recommended
+    #     packages manually.
+    sudo apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git meson just pkg-config \
+        qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-5compat-dev \
+        qt6-wayland-dev qt6-tools-dev qt6-tools-dev-tools \
         extra-cmake-modules \
-        kf6-kauth-devel kf6-kcolorscheme-devel kf6-kconfig-devel \
-        kf6-kcoreaddons-devel kf6-kcrash-devel kf6-kdbusaddons-devel \
-        kf6-kglobalaccel-devel kf6-kglobalacceld-devel \
-        kf6-kguiaddons-devel kf6-ki18n-devel \
-        kf6-kidletime-devel kf6-kpackage-devel kf6-kservice-devel \
-        kf6-ksvg-devel kf6-kwidgetsaddons-devel kf6-kwindowsystem-devel \
-        kf6-kdeclarative-devel kf6-kcmutils-devel kf6-knewstuff-devel \
-        kf6-kxmlgui-devel kf6-krunner-devel kf6-knotifications-devel \
-        kf6-kirigami \
-        kwayland-devel kdecoration-devel kscreenlocker-devel \
-        knighttime-devel plasma-wayland-protocols-devel \
-        plasma-activities-devel libplasma-devel plasma-workspace-devel \
-        plasma-milou aurorae plasma-breeze \
-        libepoxy-devel vulkan-loader-devel vulkan-headers \
-        wayland-devel wayland-protocols-devel \
-        libxkbcommon-devel libxkbcommon-x11-devel \
-        libinput-devel libdrm-devel mesa-libgbm-devel \
-        libdisplay-info-devel lcms2-devel libxcvt-devel \
-        libcanberra-devel \
-        libX11-devel libxcb-devel xcb-util-keysyms-devel \
-        xcb-util-cursor-devel xcb-util-devel xcb-util-wm-devel \
-        xcb-util-image-devel xcb-util-renderutil-devel \
-        xorg-x11-server-Xwayland \
-        systemd-devel pipewire-devel libevdev-devel \
-        qaccessibilityclient-qt6-devel pkgconf-pkg-config hwdata \
-        libEGL-devel mesa-libGLES-devel freetype-devel fontconfig-devel \
-        cairo-devel pango-devel harfbuzz-devel glib2-devel \
-        sdbus-cpp-devel pam-devel polkit-devel libcurl-devel \
-        libwebp-devel librsvg2-devel libqalculate-devel libxml2-devel \
-        jemalloc-devel \
+        kf6-kauth-dev kf6-kcolorscheme-dev kf6-kconfig-dev \
+        kf6-kconfigwidgets-dev kf6-kcoreaddons-dev kf6-kcrash-dev \
+        kf6-kdbusaddons-dev kf6-kglobalaccel-dev kf6-kguiaddons-dev \
+        kf6-ki18n-dev kf6-kiconthemes-dev kf6-kidletime-dev \
+        kf6-kio-dev kf6-kitemmodels-dev kf6-kitemviews-dev \
+        kf6-kjobwidgets-dev kf6-knewstuff-dev kf6-knotifications-dev \
+        kf6-kpackage-dev kf6-krunner-dev kf6-kservice-dev \
+        kf6-ksvg-dev kf6-ktextwidgets-dev kf6-kwidgetsaddons-dev \
+        kf6-kwindowsystem-dev kf6-kxmlgui-dev kf6-kcmutils-dev \
+        kf6-kdeclarative-dev kf6-kglobalacceld \
+        kirigami \
+        kwayland-dev kdecoration-dev kscreenlocker-dev knighttime-dev \
+        plasma-wayland-protocols \
+        plasma-activities-dev libplasma-dev plasma-workspace-dev \
+        milou aurorae breeze breeze-icon-theme breeze-cursor-theme \
+        libepoxy-dev libvulkan-dev vulkan-headers \
+        libwayland-dev wayland-protocols \
+        libxkbcommon-dev libxkbcommon-x11-dev \
+        libinput-dev libdrm-dev libgbm-dev \
+        libdisplay-info-dev liblcms2-dev libxcvt-dev \
+        libcanberra-dev \
+        libx11-dev libxcb1-dev libxcb-keysyms1-dev libxcb-cursor-dev \
+        libxcb-icccm4-dev libxcb-image0-dev libxcb-render-util0-dev \
+        libxcb-shape0-dev libxcb-shm0-dev libxcb-sync0-dev libxcb-randr0-dev \
+        libxcb-xfixes0-dev libxcb-xkb-dev libxcb-xinput-dev \
+        xwayland \
+        libsystemd-dev libpipewire-0.3-dev libevdev-dev \
+        libqaccessibilityclient-dev hwdata \
+        libegl1-mesa-dev libgles2-mesa-dev libfreetype-dev libfontconfig-dev \
+        libcairo2-dev libpango1.0-dev libharfbuzz-dev libglib2.0-dev \
+        libpam0g-dev libpolkit-gobject-1-dev libcurl4-openssl-dev \
+        libwebp-dev librsvg2-dev libqalculate-dev libxml2-dev \
+        libjemalloc-dev \
         xdg-desktop-portal xdg-desktop-portal-kde || {
-            error "Failed to install some dependencies. If you are not on Fedora,"
-            error "please install the equivalent packages for your distribution."
+            error "Failed to install some dependencies."
+            error "On older Debian/Ubuntu releases you may need to enable"
+            error "backports or a PPA so that KF6, Qt6 and Plasma 6 are available."
             exit 1
         }
 
@@ -211,7 +238,7 @@ ensure_path_hint() {
         warn "$INSTALL_PREFIX/bin is not in your PATH."
         warn "Add the following line to your shell profile (~/.bashrc or ~/.zshrc):"
         warn "  export PATH=\"$INSTALL_PREFIX/bin:\$PATH\""
-        warn "  export LD_LIBRARY_PATH=\"$INSTALL_PREFIX/lib64:\$LD_LIBRARY_PATH\""
+        warn "  export LD_LIBRARY_PATH=\"$INSTALL_PREFIX/lib/x86_64-linux-gnu:\$LD_LIBRARY_PATH\""
     fi
 }
 
@@ -220,12 +247,12 @@ ensure_path_hint() {
 # ---------------------------------------------------------------------------
 main() {
     echo "=========================================="
-    echo "  KineticWE Fedora Installer"
+    echo "  KineticWE Debian / Ubuntu Installer"
     echo "  Install prefix: $INSTALL_PREFIX"
     echo "=========================================="
     echo
 
-    check_fedora
+    check_debian
     check_sudo
     install_dependencies
     build_kwin_we
