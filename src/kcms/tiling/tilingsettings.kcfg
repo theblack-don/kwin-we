@@ -9,6 +9,14 @@
       <label>Whether native tiling is enabled</label>
       <default>true</default>
     </entry>
+    <entry name="defaultLayout" key="DefaultLayout" type="String">
+      <label>Default layout used for new (output, desktop) pairs that do not have a per-monitor override. One of "MasterStack" or "Stacked".</label>
+      <default>MasterStack</default>
+    </entry>
+    <entry name="enabledLayouts" key="EnabledLayouts" type="StringList">
+      <label>Layouts the user wants available for cycleLayout() and setLayout(). The list order also determines the cycle order.</label>
+      <default code="true">QStringList{QStringLiteral("MasterStack"), QStringLiteral("Stacked")}</default>
+    </entry>
     <entry name="gapLeft" key="GapLeft" type="Int">
       <label>Gap between the left screen edge and tiles</label>
       <default>0</default>
@@ -53,6 +61,37 @@
       <default>2</default>
       <min>0</min>
       <max>20</max>
+    </entry>
+    <entry name="tilingBorderColorSourceActive" key="TilingBorderColorSourceActive" type="Enum">
+      <label>Source for the active border color</label>
+      <choices>
+        <choice name="Custom"/>
+        <choice name="SystemAccent"/>
+      </choices>
+      <default>SystemAccent</default>
+    </entry>
+    <entry name="tilingBorderColorSourceInactive" key="TilingBorderColorSourceInactive" type="Enum">
+      <label>Source for the inactive border color</label>
+      <choices>
+        <choice name="Custom"/>
+        <choice name="SystemAccent"/>
+        <choice name="SystemAccentFaded"/>
+      </choices>
+      <default>SystemAccentFaded</default>
+    </entry>
+    <entry name="tilingBorderColorActive" key="TilingBorderColorActive" type="Color">
+      <label>Color of the border around the active tiled window</label>
+      <default code="true">QColor(61, 174, 230)</default>
+    </entry>
+    <entry name="tilingBorderColorInactive" key="TilingBorderColorInactive" type="Color">
+      <label>Color of the border around inactive tiled windows</label>
+      <default code="true">QColor(128, 128, 128, 200)</default>
+    </entry>
+    <entry name="tilingCornerRadius" key="TilingCornerRadius" type="Int">
+      <label>Corner radius applied to tiled windows (in pixels)</label>
+      <default>0</default>
+      <min>0</min>
+      <max>50</max>
     </entry>
   </group>
   <group name="TilingRules">

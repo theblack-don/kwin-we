@@ -64,8 +64,10 @@ install_dependencies() {
     step "Installing system dependencies..."
 
     # Some package names differ slightly between Fedora versions;
-    # dnf will skip anything that is already installed.
-    sudo dnf install -y \
+    # --skip-unavailable ignores packages that are not in the enabled
+    # repositories or that are already installed, so re-running this
+    # script is safe.
+    sudo dnf install -y --skip-unavailable \
         cmake ninja-build gcc-c++ git meson just \
         qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
         qt6-qtsvg-devel qt6-qt5compat-devel qt6-qtwayland-devel \
@@ -81,7 +83,7 @@ install_dependencies() {
         kf6-kirigami \
         kwayland-devel kdecoration-devel kscreenlocker-devel \
         knighttime-devel plasma-wayland-protocols-devel \
-        plasma-activities-devel libplasma-devel milou aurorae breeze \
+        plasma-activities-devel libplasma-devel plasma-milou aurorae plasma-breeze \
         libepoxy-devel vulkan-loader-devel vulkan-headers \
         wayland-devel wayland-protocols-devel \
         libxkbcommon-devel libxkbcommon-x11-devel \
@@ -136,7 +138,7 @@ build_noctalia() {
 
     # Ensure temp dir is cleaned up on exit
     cleanup_noctalia() {
-        if [[ -d "$noctalia_build_dir" ]]; then
+        if [[ -n "${noctalia_build_dir:-}" && -d "$noctalia_build_dir" ]]; then
             rm -rf "$noctalia_build_dir"
         fi
     }
@@ -161,6 +163,10 @@ build_noctalia() {
     cd "$SCRIPT_DIR"
 
     info "noctalia-shell installed to $INSTALL_PREFIX"
+
+    # Clean up the temp build dir and reset the trap now that we are done.
+    cleanup_noctalia
+    trap - EXIT
 }
 
 # ---------------------------------------------------------------------------

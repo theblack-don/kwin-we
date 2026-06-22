@@ -16,4 +16,26 @@ LayoutEngine::LayoutEngine(QObject *parent)
 
 LayoutEngine::~LayoutEngine() = default;
 
+QString LayoutEngine::layoutKindToString(LayoutKind kind)
+{
+    switch (kind) {
+    case LayoutKind::MasterStack:
+        return QStringLiteral("MasterStack");
+    case LayoutKind::Stacked:
+        return QStringLiteral("Stacked");
+    }
+    return QStringLiteral("MasterStack");
+}
+
+LayoutEngine::LayoutKind LayoutEngine::layoutKindFromString(const QString &name, LayoutKind fallback)
+{
+    if (name.compare(QLatin1String("MasterStack"), Qt::CaseInsensitive) == 0) {
+        return LayoutKind::MasterStack;
+    }
+    if (name.compare(QLatin1String("Stacked"), Qt::CaseInsensitive) == 0) {
+        return LayoutKind::Stacked;
+    }
+    return fallback;
+}
+
 } // namespace KWin

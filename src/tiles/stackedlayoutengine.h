@@ -20,20 +20,24 @@ class RootTile;
 class Window;
 
 /**
- * Master-stack layout.
+ * Stacked (single-column) layout.
  *
- * The first window is the master and occupies the left portion of the screen.
- * Subsequent windows form a vertical stack on the right.
+ * Every tiled window fills the full width of the root and is stacked vertically.
+ * The first window in the list occupies the top strip; subsequent windows fill
+ * the remaining height evenly. There is no separate master / primary window.
+ *
+ * Designed primarily for vertical (portrait) monitors, but works on any aspect
+ * ratio. New windows are appended to the bottom of the stack.
  */
-class KWIN_EXPORT MasterStackLayoutEngine : public LayoutEngine
+class KWIN_EXPORT StackedLayoutEngine : public LayoutEngine
 {
     Q_OBJECT
 
 public:
-    explicit MasterStackLayoutEngine(QObject *parent = nullptr);
-    ~MasterStackLayoutEngine() override;
+    explicit StackedLayoutEngine(QObject *parent = nullptr);
+    ~StackedLayoutEngine() override;
 
-    LayoutKind layoutKind() const override { return LayoutKind::MasterStack; }
+    LayoutKind layoutKind() const override { return LayoutKind::Stacked; }
     void attach(RootTile *root) override;
     void addWindow(Window *window) override;
     void removeWindow(Window *window) override;
@@ -47,19 +51,11 @@ public:
     Window *primaryWindow() const override;
     Window *windowInDirection(Window *from, FocusDirection direction) const override;
 
-    qreal masterRatio() const { return m_masterRatio; }
-    void setMasterRatio(qreal ratio);
-
-    int masterCount() const { return m_masterCount; }
-    void setMasterCount(int count);
-
 private:
     int indexOfWindow(Window *window) const;
 
     QPointer<RootTile> m_root;
     QList<QPointer<CustomTile>> m_leaves;
-    qreal m_masterRatio = 0.5;
-    int m_masterCount = 1;
 
     // Source leaf remembered during an interactive drag-move so the window can
     // be swapped with another tiled window or restored to its original place.

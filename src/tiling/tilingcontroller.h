@@ -83,6 +83,19 @@ public:
     void moveWindowNext();
     void moveWindowPrevious();
 
+    /**
+     * Switch the layout of the active monitor's current desktop to @p kind,
+     * rebuilding the engine in place and re-adding the windows it was
+     * managing so the visual change is immediate.
+     */
+    void setLayout(LayoutEngine::LayoutKind kind);
+
+    /**
+     * Cycle the active monitor's current desktop through the list of layouts
+     * currently enabled in kwinrc.
+     */
+    void cycleLayout();
+
     TilingRules *rules() const { return m_rules.get(); }
 
     enum class BorderMode {
@@ -94,6 +107,7 @@ public:
 private Q_SLOTS:
     void onInteractiveMoveResizeStarted();
     void onInteractiveMoveResizeFinished();
+    void onWindowDesktopsChanged(Window *window);
 
 private:
     bool shouldTile(const Window *window) const;
@@ -106,16 +120,37 @@ private:
     LayoutEngine *layoutEngineForWindow(Window *window, LogicalOutput **output = nullptr, VirtualDesktop **desktop = nullptr) const;
     Window *activeTiledWindow() const;
 
-    void setupDefaultLayoutEngine(TileManager *manager, VirtualDesktop *desktop);
+    void setupLayoutEngine(TileManager *manager, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind);
+    LayoutEngine::LayoutKind resolveLayoutKind(LogicalOutput *output) const;
+    LayoutEngine::LayoutKind globalDefaultLayoutKind() const;
+    QList<LayoutEngine::LayoutKind> enabledLayoutKinds() const;
+    bool isLayoutEnabled(LayoutEngine::LayoutKind kind) const;
     void applyGapSettingsToOutput(LogicalOutput *output);
     void updateBorders();
+
+    void setLayoutOn(LogicalOutput *output, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind);
+    void reconcileLayoutKinds();
 
     QPointer<Workspace> m_workspace;
     std::unique_ptr<TilingRules> m_rules;
     bool m_enabled = true;
+    LayoutEngine::LayoutKind m_defaultLayout = LayoutEngine::LayoutKind::MasterStack;
+    QStringList m_enabledLayouts;
     BorderMode m_borderMode = BorderMode::None;
     qreal m_borderThickness = 2.0;
-    QColor m_borderColor;
+    int m_cornerRadius = 0;
+    enum class ColorSource {
+        Custom,
+        SystemAccent,
+        SystemAccentFaded,
+    };
+    ColorSource m_colorSourceActive = ColorSource::SystemAccent;
+    ColorSource m_colorSourceInactive = ColorSource::SystemAccentFaded;
+    QColor m_borderColorActive;
+    QColor m_borderColorInactive;
+
+    QColor resolveColor(ColorSource source, const QColor &custom) const;
+    void applyCornerRadius(Window *window);
 
     struct MoveContext {
         QPointer<LayoutEngine> engine;

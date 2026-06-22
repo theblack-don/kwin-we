@@ -1035,6 +1035,21 @@ void Workspace::initShortcuts()
             m_tilingController->moveWindowToOutput(TilingController::TilingDirection::East);
         }
     }, true);
+    initShortcut("Tiling Cycle Layout", i18n("Tiling Cycle Layout"), QKeySequence(), [this]() {
+        if (m_tilingController) {
+            m_tilingController->cycleLayout();
+        }
+    }, true);
+    initShortcut("Tiling Switch To MasterStack", i18n("Tiling Switch To MasterStack"), QKeySequence(), [this]() {
+        if (m_tilingController) {
+            m_tilingController->setLayout(LayoutEngine::LayoutKind::MasterStack);
+        }
+    }, true);
+    initShortcut("Tiling Switch To Stacked", i18n("Tiling Switch To Stacked"), QKeySequence(), [this]() {
+        if (m_tilingController) {
+            m_tilingController->setLayout(LayoutEngine::LayoutKind::Stacked);
+        }
+    }, true);
 
 #if KWIN_BUILD_TABBOX
     m_tabbox->initShortcuts();
@@ -1483,17 +1498,13 @@ void windowToDesktop(Window *window, VirtualDesktopManager::Direction direction)
 
     VirtualDesktopManager *vds = VirtualDesktopManager::self();
     Workspace *ws = Workspace::self();
-    // TODO: why is options->isRollOverDesktops() not honored?
-    const auto desktop = vds->inDirection(vds->currentDesktop(window->output()), direction, true);
-    if (ws->moveResizeWindow()) {
-        if (ws->moveResizeWindow() == window) {
-            vds->setCurrent(desktop, window->output());
-        }
-    } else {
-        ws->setMoveResizeWindow(window);
-        vds->setCurrent(desktop, window->output());
-        ws->setMoveResizeWindow(nullptr);
+    VirtualDesktop *current = vds->currentDesktop(window->output());
+    const auto desktop = vds->inDirection(current, direction, true);
+    if (!desktop || desktop == current) {
+        return;
     }
+    ws->sendWindowToDesktops(window, {desktop}, true);
+    vds->setCurrent(desktop, window->output());
 }
 
 /**
@@ -1530,20 +1541,17 @@ void activeWindowToDesktop(VirtualDesktopManager::Direction direction)
 {
     VirtualDesktopManager *vds = VirtualDesktopManager::self();
     Workspace *ws = Workspace::self();
-    VirtualDesktop *current = vds->currentDesktop(ws->activeWindow()->output());
-    VirtualDesktop *newCurrent = VirtualDesktopManager::self()->inDirection(current, direction, options->isRollOverDesktops());
-    if (newCurrent == current) {
+    Window *window = ws->activeWindow();
+    if (!window || window->isDesktop() || window->isDock()) {
         return;
     }
-    if (ws->moveResizeWindow()) {
-        if (ws->moveResizeWindow() == ws->activeWindow()) {
-            vds->setCurrent(newCurrent, ws->activeWindow()->output());
-        }
-    } else {
-        ws->setMoveResizeWindow(ws->activeWindow());
-        vds->setCurrent(newCurrent, ws->activeWindow()->output());
-        ws->setMoveResizeWindow(nullptr);
+    VirtualDesktop *current = vds->currentDesktop(window->output());
+    VirtualDesktop *newCurrent = VirtualDesktopManager::self()->inDirection(current, direction, options->isRollOverDesktops());
+    if (!newCurrent || newCurrent == current) {
+        return;
     }
+    ws->sendWindowToDesktops(window, {newCurrent}, true);
+    vds->setCurrent(newCurrent, window->output());
 }
 
 void Workspace::slotWindowToDesktopRight()

@@ -220,6 +220,7 @@ target_sources(kwin PRIVATE
     tiles/layoutengine.cpp
     tiles/masterstacklayoutengine.cpp
     tiles/quicktile.cpp
+    tiles/stackedlayoutengine.cpp
     tiles/tile.cpp
     tiles/tilemanager.cpp
     tiling/tilingcontroller.cpp

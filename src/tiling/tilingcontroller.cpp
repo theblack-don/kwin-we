@@ -9,8 +9,10 @@
 #include "core/output.h"
 #include "core/rect.h"
 #include "cursor.h"
+#include "scene/borderradius.h"
 #include "tiles/layoutengine.h"
 #include "tiles/masterstacklayoutengine.h"
+#include "tiles/stackedlayoutengine.h"
 #include "tiles/tilemanager.h"
 #include "virtualdesktops.h"
 #include "window.h"
@@ -24,6 +26,22 @@
 
 namespace KWin
 {
+
+namespace
+{
+
+std::unique_ptr<LayoutEngine> createLayoutEngine(LayoutEngine::LayoutKind kind, QObject *parent)
+{
+    switch (kind) {
+    case LayoutEngine::LayoutKind::Stacked:
+        return std::make_unique<StackedLayoutEngine>(parent);
+    case LayoutEngine::LayoutKind::MasterStack:
+    default:
+        return std::make_unique<MasterStackLayoutEngine>(parent);
+    }
+}
+
+} // namespace
 
 TilingController::TilingController(Workspace *workspace)
     : QObject(workspace)
@@ -48,20 +66,45 @@ void TilingController::reconfigure()
     KConfigGroup rulesGroup(config, QStringLiteral("TilingRules"));
 
     m_enabled = tilingGroup.readEntry("Enabled", true);
+    m_defaultLayout = LayoutEngine::layoutKindFromString(
+        tilingGroup.readEntry("DefaultLayout", QStringLiteral("MasterStack")));
+    // Whitelist of layouts the user wants available. Order in the list also
+    // defines the cycle order used by cycleLayout().
+    m_enabledLayouts = tilingGroup.readEntry("EnabledLayouts",
+        QStringList{QLatin1String("MasterStack"), QLatin1String("Stacked")});
     m_rules->load(rulesGroup);
 
-    const int borderModeValue = tilingGroup.readEntry("TilingBorderMode", 0);
-    if (borderModeValue == 1) {
+    const QString borderModeString = tilingGroup.readEntry("TilingBorderMode", QStringLiteral("None"));
+    if (borderModeString == QLatin1String("AllTiled")) {
         m_borderMode = BorderMode::AllTiled;
-    } else if (borderModeValue == 2) {
+    } else if (borderModeString == QLatin1String("ActiveOnly")) {
         m_borderMode = BorderMode::ActiveOnly;
     } else {
         m_borderMode = BorderMode::None;
     }
     m_borderThickness = tilingGroup.readEntry("TilingBorderThickness", 2.0);
-    m_borderColor = QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight);
+    m_cornerRadius = tilingGroup.readEntry("TilingCornerRadius", 0);
+
+    const QString activeSourceString = tilingGroup.readEntry("TilingBorderColorSourceActive", QStringLiteral("SystemAccent"));
+    if (activeSourceString == QLatin1String("Custom")) {
+        m_colorSourceActive = ColorSource::Custom;
+    } else {
+        m_colorSourceActive = ColorSource::SystemAccent;
+    }
+    const QString inactiveSourceString = tilingGroup.readEntry("TilingBorderColorSourceInactive", QStringLiteral("SystemAccentFaded"));
+    if (inactiveSourceString == QLatin1String("Custom")) {
+        m_colorSourceInactive = ColorSource::Custom;
+    } else if (inactiveSourceString == QLatin1String("SystemAccent")) {
+        m_colorSourceInactive = ColorSource::SystemAccent;
+    } else {
+        m_colorSourceInactive = ColorSource::SystemAccentFaded;
+    }
+    m_borderColorActive = tilingGroup.readEntry("TilingBorderColorActive",
+        QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight));
+    m_borderColorInactive = tilingGroup.readEntry("TilingBorderColorInactive", QColor(128, 128, 128, 200));
 
     initializeLayouts();
+    reconcileLayoutKinds();
 
     if (m_workspace) {
         for (LogicalOutput *output : m_workspace->outputs()) {
@@ -92,26 +135,79 @@ void TilingController::onOutputAdded(LogicalOutput *output)
     if (!manager) {
         return;
     }
+    const LayoutEngine::LayoutKind kind = resolveLayoutKind(output);
     for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
-        setupDefaultLayoutEngine(manager, desktop);
+        setupLayoutEngine(manager, desktop, kind);
     }
     applyGapSettingsToOutput(output);
 }
 
-void TilingController::setupDefaultLayoutEngine(TileManager *manager, VirtualDesktop *desktop)
+void TilingController::setupLayoutEngine(TileManager *manager, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind)
 {
     if (!manager || !desktop) {
         return;
     }
 
-    // For MVP we always use master-stack. Per-output/desktop layout selection
-    // will be added in Phase 2.
+    // If a layout engine is already attached, leave it alone. Switching the
+    // layout on a live engine is handled by setLayout() / cycleLayout() so
+    // that already-tiled windows can be migrated cleanly.
     if (manager->layoutEngine(desktop)) {
         return;
     }
 
-    auto engine = std::make_unique<MasterStackLayoutEngine>(manager);
+    auto engine = createLayoutEngine(kind, manager);
     manager->setLayoutEngine(desktop, std::move(engine));
+}
+
+LayoutEngine::LayoutKind TilingController::globalDefaultLayoutKind() const
+{
+    return m_defaultLayout;
+}
+
+LayoutEngine::LayoutKind TilingController::resolveLayoutKind(LogicalOutput *output) const
+{
+    KSharedConfigPtr config = KSharedConfig::openConfig(KWIN_CONFIG);
+    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+    LayoutEngine::LayoutKind kind = globalDefaultLayoutKind();
+    if (output) {
+        const KConfigGroup outputGroup(&tilingGroup, QStringLiteral("Output %1").arg(output->name()));
+        if (outputGroup.hasKey("DefaultLayout")) {
+            kind = LayoutEngine::layoutKindFromString(outputGroup.readEntry("DefaultLayout", QString()));
+        }
+    }
+    // If the configured default is not currently enabled, fall back to the
+    // first enabled layout so the monitor is always in a usable state.
+    if (!isLayoutEnabled(kind)) {
+        const QList<LayoutEngine::LayoutKind> enabled = enabledLayoutKinds();
+        if (!enabled.isEmpty()) {
+            kind = enabled.first();
+        }
+    }
+    return kind;
+}
+
+QList<LayoutEngine::LayoutKind> TilingController::enabledLayoutKinds() const
+{
+    QList<LayoutEngine::LayoutKind> result;
+    for (const QString &name : m_enabledLayouts) {
+        // Only include kinds the controller actually knows how to build.
+        if (name.compare(QLatin1String("MasterStack"), Qt::CaseInsensitive) == 0) {
+            result.append(LayoutEngine::LayoutKind::MasterStack);
+        } else if (name.compare(QLatin1String("Stacked"), Qt::CaseInsensitive) == 0) {
+            result.append(LayoutEngine::LayoutKind::Stacked);
+        }
+    }
+    if (result.isEmpty()) {
+        // The user has disabled everything; fall back to the global default so
+        // we always have at least one layout available.
+        result.append(globalDefaultLayoutKind());
+    }
+    return result;
+}
+
+bool TilingController::isLayoutEnabled(LayoutEngine::LayoutKind kind) const
+{
+    return enabledLayoutKinds().contains(kind);
 }
 
 void TilingController::updateBorders()
@@ -128,20 +224,54 @@ void TilingController::updateBorders()
             continue;
         }
 
+        const bool isTiled = (window->tilingState().mode == TilingState::Mode::Tiled);
         bool shouldShow = false;
-        if (m_borderMode != BorderMode::None && window->tilingState().mode == TilingState::Mode::Tiled) {
+        if (m_borderMode != BorderMode::None && isTiled) {
             if (!activeOnly || window == activeWindow) {
                 shouldShow = true;
             }
         }
 
+        const QColor sourceColor = (window == activeWindow) ? m_borderColorActive : m_borderColorInactive;
+        const ColorSource source = (window == activeWindow) ? m_colorSourceActive : m_colorSourceInactive;
+        const QColor borderColor = resolveColor(source, sourceColor);
+
+        if (isTiled) {
+            applyCornerRadius(window);
+        }
+
         TilingState &state = window->tilingState();
-        if (state.showBorder != shouldShow || state.borderThickness != m_borderThickness || state.borderColor != m_borderColor) {
+        if (state.showBorder != shouldShow || state.borderThickness != m_borderThickness || state.borderColor != borderColor) {
             state.showBorder = shouldShow;
             state.borderThickness = m_borderThickness;
-            state.borderColor = m_borderColor;
+            state.borderColor = borderColor;
             Q_EMIT window->tilingBorderChanged();
         }
+    }
+}
+
+QColor TilingController::resolveColor(ColorSource source, const QColor &custom) const
+{
+    switch (source) {
+    case ColorSource::SystemAccent:
+    case ColorSource::SystemAccentFaded: {
+        QColor accent = QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight);
+        if (source == ColorSource::SystemAccentFaded) {
+            accent.setAlpha(128);
+        }
+        return accent;
+    }
+    case ColorSource::Custom:
+    default:
+        return custom;
+    }
+}
+
+void TilingController::applyCornerRadius(Window *window)
+{
+    const BorderRadius desired(m_cornerRadius);
+    if (window->borderRadius() != desired) {
+        window->setBorderRadius(desired);
     }
 }
 
@@ -159,11 +289,23 @@ void TilingController::applyGapSettingsToOutput(LogicalOutput *output)
     KSharedConfigPtr config = KSharedConfig::openConfig(KWIN_CONFIG);
     KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
 
-    const qreal gapBetween = tilingGroup.readEntry("GapBetween", 0);
-    const int gapLeft = tilingGroup.readEntry("GapLeft", 0);
-    const int gapRight = tilingGroup.readEntry("GapRight", 0);
-    const int gapTop = tilingGroup.readEntry("GapTop", 0);
-    const int gapBottom = tilingGroup.readEntry("GapBottom", 0);
+    // Defaults from the [Tiling] group.
+    const qreal defaultGapBetween = tilingGroup.readEntry("GapBetween", 0.0);
+    const int defaultGapLeft = tilingGroup.readEntry("GapLeft", 0);
+    const int defaultGapRight = tilingGroup.readEntry("GapRight", 0);
+    const int defaultGapTop = tilingGroup.readEntry("GapTop", 0);
+    const int defaultGapBottom = tilingGroup.readEntry("GapBottom", 0);
+
+    // Per-output override in the [Tiling][Output "name"] sub-group, if any.
+    // Entries fall back to the defaults above when not present in the override.
+    const QString outputKey = QStringLiteral("Output %1").arg(output->name());
+    KConfigGroup outputGroup(&tilingGroup, outputKey);
+
+    const qreal gapBetween = outputGroup.readEntry("GapBetween", defaultGapBetween);
+    const int gapLeft = outputGroup.readEntry("GapLeft", defaultGapLeft);
+    const int gapRight = outputGroup.readEntry("GapRight", defaultGapRight);
+    const int gapTop = outputGroup.readEntry("GapTop", defaultGapTop);
+    const int gapBottom = outputGroup.readEntry("GapBottom", defaultGapBottom);
     const QMarginsF gapMargins(gapLeft, gapTop, gapRight, gapBottom);
 
     for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
@@ -180,8 +322,34 @@ void TilingController::onWindowAdded(Window *window)
         return;
     }
 
+    // Watch for mouse-driven moves so we can swap with the window under the
+    // cursor on release rather than treating the dragged window as a new one.
+    connect(window, &Window::interactiveMoveResizeStarted,
+            this, &TilingController::onInteractiveMoveResizeStarted,
+            Qt::UniqueConnection);
+    connect(window, &Window::interactiveMoveResizeFinished,
+            this, &TilingController::onInteractiveMoveResizeFinished,
+            Qt::UniqueConnection);
+
+    // When the window is moved between desktops (e.g. via the
+    // "Window to Next/Previous/Up/Down Desktop" shortcuts) the layout engines
+    // need to migrate the window so it stays tiled on the new desktop and the
+    // old layout reflows to fill the empty slot.
+    connect(window, &Window::desktopsChanged, this,
+            [this, window]() { onWindowDesktopsChanged(window); },
+            Qt::UniqueConnection);
+
+    // When the decoration is (re-)applied, it overwrites the window's
+    // borderRadius. Re-apply our corner radius if the window is tiled.
+    connect(window, &Window::decorationChanged, this, [this, window]() {
+        if (window->tilingState().mode == TilingState::Mode::Tiled) {
+            applyCornerRadius(window);
+        }
+    }, Qt::UniqueConnection);
+
     // Don't touch already-managed windows (e.g. on-all-desktops already handled).
     if (window->tilingState().mode != TilingState::Mode::Floating) {
+        updateBorders();
         return;
     }
 
@@ -195,15 +363,6 @@ void TilingController::onWindowAdded(Window *window)
             : window->desktops().constFirst();
         addWindowToLayout(window, output, desktop);
     }
-
-    // Watch for mouse-driven moves so we can swap with the window under the
-    // cursor on release rather than treating the dragged window as a new one.
-    connect(window, &Window::interactiveMoveResizeStarted,
-            this, &TilingController::onInteractiveMoveResizeStarted,
-            Qt::UniqueConnection);
-    connect(window, &Window::interactiveMoveResizeFinished,
-            this, &TilingController::onInteractiveMoveResizeFinished,
-            Qt::UniqueConnection);
 
     updateBorders();
 }
@@ -228,7 +387,7 @@ void TilingController::addWindowToLayout(Window *window, LogicalOutput *output, 
         return;
     }
 
-    setupDefaultLayoutEngine(manager, desktop);
+    setupLayoutEngine(manager, desktop, resolveLayoutKind(output));
 
     LayoutEngine *engine = manager->layoutEngine(desktop);
     if (!engine) {
@@ -487,6 +646,52 @@ void TilingController::onWindowMoveFinished(Window *window)
     addWindowToLayout(window, output, desktop);
 }
 
+void TilingController::onWindowDesktopsChanged(Window *window)
+{
+    if (!m_enabled || !m_workspace || !window) {
+        return;
+    }
+
+    // Floating windows are not part of any layout engine; nothing to migrate.
+    if (window->tilingState().mode != TilingState::Mode::Tiled) {
+        return;
+    }
+
+    // On-all-desktops or multi-desktop windows stay managed by whatever
+    // layout engine they were already in; the new desktop set is not a
+    // request to re-tile.
+    if (window->isOnAllDesktops() || window->desktops().size() != 1) {
+        return;
+    }
+
+    VirtualDesktop *newDesktop = window->desktops().constFirst();
+    if (!newDesktop) {
+        return;
+    }
+
+    // Remove the window from whichever layout engine currently manages it.
+    // The engine will reflow, so the remaining tiled windows on the source
+    // desktop auto-fill the freed slot.
+    LayoutEngine *currentEngine = layoutEngineForWindow(window);
+    VirtualDesktop *oldDesktop = nullptr;
+    if (currentEngine) {
+        LogicalOutput *oldOutput = nullptr;
+        layoutEngineForWindow(window, &oldOutput, &oldDesktop);
+        if (oldDesktop == newDesktop) {
+            // Desktop set changed but the managed desktop is the same
+            // (e.g. a no-op toggle). Nothing to do.
+            return;
+        }
+        currentEngine->removeWindow(window);
+    }
+
+    LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
+    if (!output) {
+        return;
+    }
+    addWindowToLayout(window, output, newDesktop);
+}
+
 Window *TilingController::windowUnderCursorInEngine(LayoutEngine *engine) const
 {
     if (!m_workspace || !engine) {
@@ -549,6 +754,134 @@ void TilingController::moveWindowPrevious()
         return;
     }
     engine->moveWindow(window, -1);
+}
+
+void TilingController::setLayout(LayoutEngine::LayoutKind kind)
+{
+    if (!m_workspace) {
+        return;
+    }
+
+    LogicalOutput *output = m_workspace->activeOutput();
+    if (!output) {
+        return;
+    }
+
+    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(output);
+    if (!desktop) {
+        return;
+    }
+
+    setLayoutOn(output, desktop, kind);
+}
+
+void TilingController::setLayoutOn(LogicalOutput *output, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind)
+{
+    if (!m_workspace || !output || !desktop) {
+        return;
+    }
+
+    // If the user disabled this kind in the kcm, fall back to the first
+    // enabled layout so setLayout / cycleLayout never silently do nothing.
+    if (!isLayoutEnabled(kind)) {
+        const QList<LayoutEngine::LayoutKind> enabled = enabledLayoutKinds();
+        if (enabled.isEmpty()) {
+            return;
+        }
+        kind = enabled.first();
+    }
+
+    TileManager *manager = m_workspace->tileManager(output);
+    if (!manager) {
+        return;
+    }
+
+    LayoutEngine *existing = manager->layoutEngine(desktop);
+    if (!existing) {
+        // No engine yet — just create one in the requested kind.
+        setupLayoutEngine(manager, desktop, kind);
+        return;
+    }
+
+    if (existing->layoutKind() == kind) {
+        // Already the desired layout; nothing to do.
+        return;
+    }
+
+    // Take ownership of the current windows so we can re-add them in the same
+    // order once the new engine is in place.
+    const QList<Window *> carriedWindows = existing->windows();
+
+    auto engine = createLayoutEngine(kind, manager);
+    manager->setLayoutEngine(desktop, std::move(engine));
+
+    LayoutEngine *fresh = manager->layoutEngine(desktop);
+    if (!fresh) {
+        return;
+    }
+
+    for (Window *w : carriedWindows) {
+        if (!w || w->isDeleted()) {
+            continue;
+        }
+        fresh->addWindow(w);
+    }
+}
+
+void TilingController::reconcileLayoutKinds()
+{
+    if (!m_enabled || !m_workspace) {
+        return;
+    }
+
+    for (LogicalOutput *output : m_workspace->outputs()) {
+        if (!output) {
+            continue;
+        }
+        const LayoutEngine::LayoutKind kind = resolveLayoutKind(output);
+        for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
+            setLayoutOn(output, desktop, kind);
+        }
+    }
+}
+
+void TilingController::cycleLayout()
+{
+    if (!m_workspace) {
+        return;
+    }
+    LogicalOutput *output = m_workspace->activeOutput();
+    if (!output) {
+        return;
+    }
+    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(output);
+    if (!desktop) {
+        return;
+    }
+    TileManager *manager = m_workspace->tileManager(output);
+    if (!manager) {
+        return;
+    }
+
+    const QList<LayoutEngine::LayoutKind> enabled = enabledLayoutKinds();
+    if (enabled.size() < 2) {
+        // Nothing to cycle through.
+        return;
+    }
+
+    // Detect the kind of the engine currently attached to this (output, desktop)
+    // pair so the cycle picks the *next* one rather than always the first.
+    LayoutEngine::LayoutKind currentKind = globalDefaultLayoutKind();
+    if (LayoutEngine *current = manager->layoutEngine(desktop)) {
+        currentKind = current->layoutKind();
+    }
+
+    int currentIndex = enabled.indexOf(currentKind);
+    if (currentIndex < 0) {
+        currentIndex = 0;
+    }
+    const int nextIndex = (currentIndex + 1) % enabled.size();
+    setLayout(enabled.at(nextIndex));
 }
 
 void TilingController::moveWindowToOutput(TilingDirection direction)

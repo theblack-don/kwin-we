@@ -1960,6 +1960,27 @@ public:
         }
         Window *window = input()->pointer()->focus();
         if (!window || !window->isClient()) {
+            // No client under the cursor (e.g. on the wallpaper or on a
+            // layer-shell surface that doesn't accept the command). If the
+            // user is holding the configured "command all" modifier and the
+            // per-window wheel action is set to move a window to the next or
+            // previous desktop, fall back to just switching the current
+            // desktop (without moving any window).
+            if (event->modifiersRelevantForGlobalShortcuts == options->commandAllModifier()) {
+                const auto command = options->operationWindowMouseWheel(
+                    (event->inverted ? -1 : 1) * event->delta);
+                if (command == Options::MouseCommand::MouseNextDesktop
+                    || command == Options::MouseCommand::MousePreviousDesktop) {
+                    if (m_accumulator.accumulate(event)) {
+                        VirtualDesktopManager::self()->moveTo(
+                            command == Options::MouseCommand::MouseNextDesktop
+                                ? VirtualDesktopManager::Direction::Next
+                                : VirtualDesktopManager::Direction::Previous,
+                            options->isRollOverDesktops());
+                    }
+                    return true;
+                }
+            }
             return false;
         }
         const auto command = windowWheelCommand(event, window);

@@ -31,8 +31,25 @@ class KWIN_EXPORT LayoutEngine : public QObject
     Q_OBJECT
 
 public:
+    /**
+     * Identifies a layout engine implementation. The integer value is what is
+     * stored in kwinrc; append new kinds to the end and never reorder.
+     */
+    enum class LayoutKind {
+        MasterStack = 0,
+        Stacked = 1,
+    };
+
+    static QString layoutKindToString(LayoutKind kind);
+    static LayoutKind layoutKindFromString(const QString &name, LayoutKind fallback = LayoutKind::MasterStack);
+
     explicit LayoutEngine(QObject *parent = nullptr);
     ~LayoutEngine() override;
+
+    /**
+     * Returns the kind of layout implemented by this engine.
+     */
+    virtual LayoutKind layoutKind() const = 0;
 
     /**
      * Called once when the engine is assigned to a RootTile.
