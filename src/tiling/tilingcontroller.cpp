@@ -872,6 +872,13 @@ void TilingController::onWindowDesktopsChanged(Window *window)
         return;
     }
 
+    // During an interactive move or resize the destination output/desktop will be
+    // resolved on release (onWindowMoveFinished/endInteractiveResize); don't
+    // migrate to an intermediate output/desktop while the user is still dragging.
+    if (m_activeMoves.contains(window) || m_activeResizes.contains(window)) {
+        return;
+    }
+
     VirtualDesktop *newDesktop = window->desktops().constFirst();
     if (!newDesktop) {
         return;

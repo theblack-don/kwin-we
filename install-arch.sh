@@ -186,13 +186,20 @@ install_startup_script() {
 install_desktop_file() {
     step "Installing desktop session entry..."
 
-    local sessions_dir="$HOME/.local/share/wayland-sessions"
-    mkdir -p "$sessions_dir"
+    # Display greeters like SDDM only look in /usr/share/wayland-sessions
+    # (and /usr/share/xsessions), so the desktop file must live there
+    # system-wide for the session to be selectable at login.
+    local sessions_dir="/usr/share/wayland-sessions"
+    sudo mkdir -p "$sessions_dir"
 
+    local tmp_file
+    tmp_file="$(mktemp)"
     sed -e "s|@INSTALL_PREFIX@|$INSTALL_PREFIX|g" \
         -e "s|@USER@|$USER|g" \
         "$SCRIPT_DIR/scripts/kineticwe.desktop.in" \
-        > "$sessions_dir/kineticwe.desktop"
+        > "$tmp_file"
+    sudo install -m 0644 "$tmp_file" "$sessions_dir/kineticwe.desktop"
+    rm -f "$tmp_file"
 
     info "Installed $sessions_dir/kineticwe.desktop"
 }

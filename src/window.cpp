@@ -1229,6 +1229,12 @@ void Window::updateInteractiveMoveResize(const QPointF &global, Qt::KeyboardModi
                 }
             }
 
+            // Track the output the pointer/touch/pen is on rather than the
+            // window's center, so dragging a large window quickly across
+            // multiple outputs commits it to the output the user released
+            // on instead of an intermediate output whose geometry contains
+            // the window's center.
+            setMoveResizeOutput(workspace()->outputAt(global));
             move(nextMoveResizeGeom.topLeft());
             Q_EMIT interactiveMoveResizeStepped(nextMoveResizeGeom);
         }
@@ -3366,7 +3372,15 @@ RectF Window::moveResizeGeometry() const
 void Window::setMoveResizeGeometry(const RectF &geo)
 {
     m_moveResizeGeometry = geo;
-    setMoveResizeOutput(workspace()->outputAt(geo.center()));
+    if (!isInteractiveMoveResize()) {
+        // While the user is moving or resizing the window, the move-resize
+        // output is driven by the pointer/touch/pen position from
+        // updateInteractiveMoveResize(); recomputing it from the window's
+        // center here would clobber that and re-introduce the bug where
+        // dragging a large window across multiple outputs leaves it on an
+        // intermediate output.
+        setMoveResizeOutput(workspace()->outputAt(geo.center()));
+    }
 }
 
 LogicalOutput *Window::moveResizeOutput() const

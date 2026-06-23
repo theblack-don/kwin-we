@@ -11,6 +11,7 @@
 #include "scene/windowitem.h"
 #include "wayland/clientconnection.h"
 #include "wayland/display.h"
+#include "wayland/output.h"
 #include "wayland/surface.h"
 #include "wayland_server.h"
 #include "workspace.h"
@@ -155,6 +156,23 @@ void WaylandWindow::updateClientOutputs()
         return;
     }
 
+    if (isInteractiveMove()) {
+        // While the user is moving the window, restrict the surface to the
+        // output the pointer/touch/pen is on. Using outputsIntersecting()
+        // would leave the surface assigned to every output the window frame
+        // happens to cross, which manifests as a "ghost" window on
+        // intermediate outputs when dragging a large window across multiple
+        // outputs.
+        if (auto *output = moveResizeOutput()) {
+            for (auto *waylandOutput : waylandServer()->display()->outputs()) {
+                if (waylandOutput->handle() == output) {
+                    surface()->setOutputs({waylandOutput}, waylandOutput);
+                    return;
+                }
+            }
+        }
+    }
+
     surface()->setOutputs(waylandServer()->display()->outputsIntersecting(rect),
                           waylandServer()->display()->largestIntersectingOutput(rect));
 }
@@ -236,7 +254,18 @@ void WaylandWindow::updateGeometry(const RectF &rect)
         return;
     }
 
-    m_output = workspace()->outputAt(rect.center());
+    if (isInteractiveMoveResize()) {
+        // While the user is moving or resizing the window, follow the
+        // move-resize output (set from the pointer/touch/pen position in
+        // Window::updateInteractiveMoveResize) rather than recomputing from
+        // the window's center. This keeps the outputChanged signal and the
+        // Wayland surface output in sync with the user's intent, so dragging
+        // a large window across multiple outputs does not leave it assigned
+        // to an intermediate output.
+        m_output = moveResizeOutput();
+    } else {
+        m_output = workspace()->outputAt(rect.center());
+    }
     updateWindowRules(Rules::Position | Rules::Size);
 
     if (changedGeometries & WaylandGeometryBuffer) {

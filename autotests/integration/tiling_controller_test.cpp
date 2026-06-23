@@ -48,6 +48,7 @@ private Q_SLOTS:
     void testCrossOutputMove();
     void testFirstTimeEngineCreationOnDestination();
     void testNoOpWhenDesktopUnchanged();
+    void testNoIntermediateMigrationDuringInteractiveMove();
 
 private:
     std::unique_ptr<KWayland::Client::Surface> m_surface;
@@ -293,6 +294,113 @@ void TilingControllerTest::testNoOpWhenDesktopUnchanged()
     QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
     QVERIFY(engineBefore->windows().contains(m_window));
     QCOMPARE(engineBefore->windows().size(), leavesBefore);
+}
+
+void TilingControllerTest::testNoIntermediateMigrationDuringInteractiveMove()
+{
+    TilingController *controller = workspace()->tilingController();
+    QVERIFY(controller);
+
+    // Three horizontal outputs with per-output virtual desktops, matching the
+    // user report of dragging across three monitors.
+    Test::setOutputConfig({
+        Rect(0, 0, 1280, 1024),
+        Rect(1280, 0, 1280, 1024),
+        Rect(2560, 0, 1280, 1024),
+    });
+    VirtualDesktopManager::self()->setPerOutputVirtualDesktops(true);
+    const auto outputs = workspace()->outputs();
+    QCOMPARE(outputs.size(), 3);
+    const auto desktops = VirtualDesktopManager::self()->desktops();
+    VirtualDesktopManager::self()->setCurrent(desktops.at(0), outputs.at(0));
+    VirtualDesktopManager::self()->setCurrent(desktops.at(1), outputs.at(1));
+    VirtualDesktopManager::self()->setCurrent(desktops.at(2), outputs.at(2));
+
+    LogicalOutput *output1 = outputs.at(0);
+    LogicalOutput *output2 = outputs.at(1);
+    LogicalOutput *output3 = outputs.at(2);
+    TileManager *manager1 = workspace()->tileManager(output1);
+    TileManager *manager2 = workspace()->tileManager(output2);
+    TileManager *manager3 = workspace()->tileManager(output3);
+    QVERIFY(manager1);
+    QVERIFY(manager2);
+    QVERIFY(manager3);
+
+    // Create the dragged window on output 1.
+    input()->pointer()->warp(output1->geometry().center());
+    m_surface = Test::createSurface();
+    QVERIFY(m_surface);
+    m_shellSurface = Test::createXdgToplevelSurface(m_surface.get());
+    m_window = Test::renderAndWaitForShown(m_surface.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window);
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+    LayoutEngine *engine1 = manager1->layoutEngine(desktops.at(0));
+    QVERIFY(engine1);
+    QVERIFY(engine1->windows().contains(m_window));
+
+    // Start interactive move.
+    QSignalSpy interactiveMoveResizeStartedSpy(m_window, &Window::interactiveMoveResizeStarted);
+    workspace()->activateWindow(m_window);
+    workspace()->slotWindowMove();
+    QCOMPARE(interactiveMoveResizeStartedSpy.count(), 1);
+    QCOMPARE(m_window->isInteractiveMove(), true);
+
+    // First step lands on output 2. For a tiled window this un-tiles the
+    // window and restores it to geometryRestore (the small drag preview).
+    const QPointF pos2(output2->geometry().center());
+    input()->pointer()->warp(pos2.toPoint());
+    m_window->updateInteractiveMoveResize(pos2, Qt::KeyboardModifiers());
+    QCOMPARE(m_window->quickTileMode(), QuickTileMode(QuickTileFlag::None));
+
+    // Second step is also on output 2; this is where moveResizeOutput would
+    // become output 2 and emit outputChanged, which (with per-output desktops)
+    // changes the desktop and would trigger the migration we are guarding.
+    const QPointF pos2b(1700, 512);
+    input()->pointer()->warp(pos2b.toPoint());
+    m_window->updateInteractiveMoveResize(pos2b, Qt::KeyboardModifiers());
+    QCOMPARE(m_window->output(), output2);
+    QCOMPARE(m_window->desktops(), QList<VirtualDesktop *>{desktops.at(1)});
+
+    // The regression: the dragged window must NOT be added to output 2's layout.
+    // If the bug were present, onWindowDesktopsChanged would have migrated the
+    // window here while it was still being dragged.
+    if (LayoutEngine *engine2 = manager2->layoutEngine(m_window->desktops().constFirst())) {
+        QVERIFY2(!engine2->windows().contains(m_window),
+                 qPrintable(QStringLiteral("Dragged window leaked into intermediate output 2's layout")));
+    }
+
+    // Move onto output 3.
+    const QPointF pos3(output3->geometry().center());
+    input()->pointer()->warp(pos3.toPoint());
+    m_window->updateInteractiveMoveResize(pos3, Qt::KeyboardModifiers());
+    QCOMPARE(m_window->output(), output3);
+    QCOMPARE(m_window->desktops(), QList<VirtualDesktop *>{desktops.at(2)});
+    if (LayoutEngine *engine2 = manager2->layoutEngine(desktops.at(1))) {
+        QVERIFY(!engine2->windows().contains(m_window));
+    }
+
+    // Finish the move on output 3.
+    QSignalSpy interactiveMoveResizeFinishedSpy(m_window, &Window::interactiveMoveResizeFinished);
+    m_window->keyPressEvent(Qt::Key_Enter);
+    QCOMPARE(interactiveMoveResizeFinishedSpy.count(), 1);
+    QCOMPARE(m_window->isInteractiveMove(), false);
+
+    // The window should end up in output 3's layout.
+    LayoutEngine *engine3 = manager3->layoutEngine(desktops.at(2));
+    QVERIFY(engine3);
+    QVERIFY2(engine3->windows().contains(m_window),
+             qPrintable(QStringLiteral("Dragged window was not added to final output 3's layout")));
+    QVERIFY(!engine1->windows().contains(m_window));
+    if (LayoutEngine *engine2 = manager2->layoutEngine(desktops.at(1))) {
+        QVERIFY(!engine2->windows().contains(m_window));
+    }
+
+    // Restore the 2-output config for the other tests.
+    Test::setOutputConfig({
+        Rect(0, 0, 1280, 1024),
+        Rect(1280, 0, 1280, 1024),
+    });
+    VirtualDesktopManager::self()->setPerOutputVirtualDesktops(false);
 }
 
 } // namespace KWin
