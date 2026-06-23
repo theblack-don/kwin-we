@@ -97,6 +97,12 @@
       <min>0</min>
       <max>50</max>
     </entry>
+    <entry name="resizeStep" key="ResizeStep" type="Double">
+      <label>How much each Grow/Shrink shortcut press changes a tiled window's share of its column, or the column divider in a master/stack layout. Expressed in weight units (0.01 - 1.0). The KDE standard 0.05 means a single press moves the divider by 5% of the screen width, or grows a leaf's share by ~5% of its column.</label>
+      <default>0.05</default>
+      <min>0.01</min>
+      <max>1.0</max>
+    </entry>
   </group>
   <group name="TilingRules">
     <entry name="floatingClasses" key="FloatingClass" type="StringList">

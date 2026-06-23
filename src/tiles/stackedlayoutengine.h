@@ -51,11 +51,19 @@ public:
     Window *primaryWindow() const override;
     Window *windowInDirection(Window *from, FocusDirection direction) const override;
 
+    bool supportsPerTileResize() const override { return true; }
+    void adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis) override;
+    void adjustColumnRatio(qreal delta) override { Q_UNUSED(delta) }
+
 private:
     int indexOfWindow(Window *window) const;
 
     QPointer<RootTile> m_root;
     QList<QPointer<CustomTile>> m_leaves;
+    // Per-tile weight parallel to m_leaves. Each new leaf starts at 1.0;
+    // reflow() distributes the column height proportionally. See
+    // MasterStackLayoutEngine for the floor/renormalisation details.
+    QList<qreal> m_weights;
 
     // Source leaf remembered during an interactive drag-move so the window can
     // be swapped with another tiled window or restored to its original place.

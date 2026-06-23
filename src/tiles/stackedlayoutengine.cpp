@@ -13,6 +13,14 @@
 namespace KWin
 {
 
+namespace
+{
+constexpr qreal DefaultWeight = 1.0;
+constexpr qreal MinWeightShare = 0.05;
+constexpr qreal MinWeight = 0.1;
+constexpr qreal MaxWeight = 10.0;
+} // namespace
+
 StackedLayoutEngine::StackedLayoutEngine(QObject *parent)
     : LayoutEngine(parent)
 {
@@ -50,10 +58,12 @@ void StackedLayoutEngine::addWindow(Window *window)
     // Insert new window as the last item in the stack.
     CustomTile *leaf = m_root->createChildAt(RectF(0, 0, 1, 1), Tile::LayoutDirection::Floating, m_leaves.count());
     m_leaves.append(leaf);
+    m_weights.append(DefaultWeight);
     if (!leaf->manage(window)) {
         qWarning() << "StackedLayoutEngine: failed to manage window" << window->caption() << "in leaf, desktop mismatch?";
         m_root->destroyChild(leaf);
         m_leaves.removeLast();
+        m_weights.removeLast();
         return;
     }
 
@@ -67,6 +77,8 @@ void StackedLayoutEngine::removeWindow(Window *window)
         return;
     }
 
+    // Drop the weight before the leaf so the parallel-list invariant holds.
+    m_weights.removeAt(idx);
     CustomTile *leaf = m_leaves.takeAt(idx);
     leaf->unmanage(window);
     m_root->destroyChild(leaf);
@@ -166,20 +178,80 @@ void StackedLayoutEngine::reflow()
         if (CustomTile *leaf = m_leaves.first()) {
             leaf->setRelativeGeometry(RectF(0, 0, 1, 1));
         }
+        m_weights = {DefaultWeight};
         Q_EMIT layoutChanged();
         return;
     }
 
-    // Stack fills the full width; height is split evenly among the leaves.
-    const qreal stripHeight = 1.0 / count;
+    // Defensive: keep m_weights in lock-step with m_leaves. If a reflow is
+    // triggered before addWindow has appended a weight, heal the list.
+    while (m_weights.size() < count) {
+        m_weights.append(DefaultWeight);
+    }
+    while (m_weights.size() > count) {
+        m_weights.removeLast();
+    }
+
+    // Distribute the full height by weight. Same floor/renormalisation
+    // strategy as MasterStackLayoutEngine.
+    QList<qreal> heights(count, 0.0);
+    qreal totalWeight = 0.0;
+    for (qreal w : m_weights) {
+        totalWeight += std::max(w, qreal(0.0001));
+    }
+    for (int i = 0; i < count; ++i) {
+        heights[i] = (std::max(m_weights[i], qreal(0.0001)) / totalWeight) * 1.0;
+    }
+    const qreal floor = MinWeightShare;
+    for (int pass = 0; pass < 4; ++pass) {
+        bool anyStarved = false;
+        for (int i = 0; i < heights.size(); ++i) {
+            if (heights[i] < floor) {
+                qreal deficit = floor - heights[i];
+                int donorIdx = -1;
+                qreal donorH = -1.0;
+                for (int j = 0; j < heights.size(); ++j) {
+                    if (j != i && heights[j] > donorH) {
+                        donorH = heights[j];
+                        donorIdx = j;
+                    }
+                }
+                if (donorIdx < 0 || donorH - deficit < floor) {
+                    break;
+                }
+                heights[donorIdx] -= deficit;
+                heights[i] = floor;
+                anyStarved = true;
+            }
+        }
+        if (!anyStarved) {
+            break;
+        }
+    }
+
+    // Place each leaf from top to bottom. Vertical distribution only;
+    // horizontal axis has no meaning for a single-column stack.
+    qreal y = 0.0;
     for (int i = 0; i < count; ++i) {
         if (CustomTile *leaf = m_leaves[i]) {
-            RectF geom(0.0, i * stripHeight, 1.0, stripHeight);
-            leaf->setRelativeGeometry(geom);
+            leaf->setRelativeGeometry(RectF(0.0, y, 1.0, heights[i]));
+            y += heights[i];
         }
     }
 
     Q_EMIT layoutChanged();
+}
+
+void StackedLayoutEngine::adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis)
+{
+    Q_UNUSED(axis); // A single-column stack has no horizontal axis to grow.
+
+    const int idx = indexOfWindow(window);
+    if (idx < 0) {
+        return;
+    }
+    m_weights[idx] = std::clamp(m_weights[idx] + weightDelta, MinWeight, MaxWeight);
+    reflow();
 }
 
 QList<Window *> StackedLayoutEngine::windows() const

@@ -14,6 +14,7 @@
 #include "tiles/masterstacklayoutengine.h"
 #include "tiles/stackedlayoutengine.h"
 #include "tiles/tilemanager.h"
+#include "utils/gravity.h"
 #include "virtualdesktops.h"
 #include "window.h"
 #include "workspace.h"
@@ -105,6 +106,11 @@ void TilingController::reconfigure()
     m_enabledLayouts = tilingGroup.readEntry("EnabledLayouts",
         QStringList{QLatin1String("MasterStack"), QLatin1String("Stacked")});
     m_rules->load(rulesGroup);
+
+    // Per-tile resize step. Weight units; see tilingcontroller.h. Clamped to
+    // a sane range so a misconfigured kwinrc cannot disable resize or make
+    // a single press span the whole column.
+    m_resizeStep = std::clamp(tilingGroup.readEntry("ResizeStep", 0.1), qreal(0.01), qreal(1.0));
 
     const QString borderModeString = tilingGroup.readEntry("TilingBorderMode", QStringLiteral("None"));
     if (borderModeString == QLatin1String("AllTiled")) {
@@ -519,6 +525,9 @@ void TilingController::removeWindowFromLayouts(Window *window)
             }
         }
     }
+
+    // Any active resize context for this window is now stale.
+    m_activeResizes.remove(window);
 }
 
 void TilingController::migrateWindow(Window *window, LogicalOutput *newOutput, VirtualDesktop *newDesktop)
@@ -699,11 +708,52 @@ void TilingController::toggleFloating()
 void TilingController::onInteractiveMoveResizeStarted()
 {
     Window *window = qobject_cast<Window *>(sender());
-    if (!window || !window->isInteractiveMove()) {
+    if (!window) {
         return;
     }
     LayoutEngine *engine = layoutEngineForWindow(window);
     if (!engine) {
+        return;
+    }
+
+    if (window->isInteractiveResize()) {
+        // Resize path: capture the source leaf and the edge being dragged so
+        // endInteractiveResize can convert the final pixel delta into a
+        // weight delta on the engine.
+        const Gravity gravity = window->interactiveMoveResizeGravity();
+        Qt::Edge edge = Qt::RightEdge;
+        switch (gravity) {
+        case Gravity::Left:
+        case Gravity::TopLeft:
+        case Gravity::BottomLeft:
+            edge = Qt::LeftEdge;
+            break;
+        case Gravity::Right:
+        case Gravity::TopRight:
+        case Gravity::BottomRight:
+            edge = Qt::RightEdge;
+            break;
+        case Gravity::Top:
+            edge = Qt::TopEdge;
+            break;
+        case Gravity::Bottom:
+            edge = Qt::BottomEdge;
+            break;
+        case Gravity::None:
+            // No specific edge; fall back to right (most common grab).
+            edge = Qt::RightEdge;
+            break;
+        }
+
+        ResizeContext context;
+        context.engine = engine;
+        context.originalGeometry = window->moveResizeGeometry();
+        context.edge = edge;
+        m_activeResizes[window] = context;
+        return;
+    }
+
+    if (!window->isInteractiveMove()) {
         return;
     }
 
@@ -736,6 +786,19 @@ void TilingController::onInteractiveMoveResizeStarted()
 void TilingController::onInteractiveMoveResizeFinished()
 {
     Window *window = qobject_cast<Window *>(sender());
+    if (!window) {
+        return;
+    }
+
+    // Resize path takes precedence over move. If the user both moved and
+    // resized in the same gesture, the resize context still applies.
+    if (m_activeResizes.contains(window)) {
+        const ResizeContext context = m_activeResizes.value(window);
+        const RectF finalGeometry = window->moveResizeGeometry();
+        endInteractiveResize(window, finalGeometry, context.edge);
+        return;
+    }
+
     onWindowMoveFinished(window);
 }
 
@@ -1055,6 +1118,129 @@ void TilingController::moveWindowToOutput(TilingDirection direction)
     // follow the exact same engine-swap path. The helper is idempotent for
     // no-op moves.
     migrateWindow(window, targetOutput, desktop);
+}
+
+void TilingController::growActiveTileSize(Qt::Orientation axis)
+{
+    if (!m_enabled) {
+        return;
+    }
+    Window *window = activeTiledWindow();
+    if (!window) {
+        return;
+    }
+    LayoutEngine *engine = layoutEngineForWindow(window);
+    if (!engine || !engine->supportsPerTileResize()) {
+        return;
+    }
+    engine->adjustTileSize(window, m_resizeStep, axis);
+}
+
+void TilingController::shrinkActiveTileSize(Qt::Orientation axis)
+{
+    if (!m_enabled) {
+        return;
+    }
+    Window *window = activeTiledWindow();
+    if (!window) {
+        return;
+    }
+    LayoutEngine *engine = layoutEngineForWindow(window);
+    if (!engine || !engine->supportsPerTileResize()) {
+        return;
+    }
+    engine->adjustTileSize(window, -m_resizeStep, axis);
+}
+
+void TilingController::beginInteractiveResize(Window *window)
+{
+    if (!window || !m_workspace) {
+        return;
+    }
+    LayoutEngine *engine = layoutEngineForWindow(window);
+    if (!engine || !engine->supportsPerTileResize()) {
+        return;
+    }
+
+    ResizeContext context;
+    context.engine = engine;
+    context.originalGeometry = window->moveResizeGeometry();
+    // Default to right edge; the caller (onInteractiveMoveResizeStarted) is
+    // expected to update this with the actual grabbed edge before invoking
+    // this helper. We set RightEdge as a safe fallback so an uninitialised
+    // context still produces a sensible delta calculation.
+    context.edge = Qt::RightEdge;
+    m_activeResizes[window] = context;
+}
+
+void TilingController::endInteractiveResize(Window *window, const RectF &finalGeometry, Qt::Edge edge)
+{
+    if (!window || !m_workspace) {
+        m_activeResizes.remove(window);
+        return;
+    }
+    auto it = m_activeResizes.find(window);
+    if (it == m_activeResizes.end()) {
+        return;
+    }
+    ResizeContext context = it.value();
+    m_activeResizes.erase(it);
+
+    if (!context.engine || !context.engine->supportsPerTileResize()) {
+        return;
+    }
+
+    const RectF before = context.originalGeometry;
+    const RectF after = finalGeometry;
+    if (before.size() == QSizeF() || after.size() == QSizeF()) {
+        return;
+    }
+
+    // Translate the geometry delta into a weight/ratio delta on the engine.
+    LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
+    if (!output) {
+        return;
+    }
+    const QSizeF outputSize = output->geometry().size();
+    if (outputSize.width() <= 0 || outputSize.height() <= 0) {
+        return;
+    }
+
+    qreal delta = 0.0;
+    Qt::Orientation axis = Qt::Vertical;
+    switch (edge) {
+    case Qt::LeftEdge:
+        delta = (before.left() - after.left()) / outputSize.width();
+        axis = Qt::Horizontal;
+        break;
+    case Qt::RightEdge:
+        delta = (after.right() - before.right()) / outputSize.width();
+        axis = Qt::Horizontal;
+        break;
+    case Qt::TopEdge:
+        delta = (before.top() - after.top()) / outputSize.height();
+        axis = Qt::Vertical;
+        break;
+    case Qt::BottomEdge:
+        delta = (after.bottom() - before.bottom()) / outputSize.height();
+        axis = Qt::Vertical;
+        break;
+    }
+    if (qFuzzyIsNull(delta)) {
+        return;
+    }
+
+    // Clamp the delta so a single very-large drag doesn't slam a weight to
+    // the rail. 0.5 (half a column / half a screen) is a generous upper
+    // bound for any single drag.
+    delta = std::clamp(delta, qreal(-0.5), qreal(0.5));
+
+    // The reflow will call leaf->setRelativeGeometry(...) which in turn
+    // calls w->moveResize(windowGeometry()) for every window in the leaf.
+    // That is the snap-back to the tiled geometry: the user dragged a
+    // floating proxy, releasing applies the new weight, and the window
+    // lands exactly where the engine wants it.
+    context.engine->adjustTileSize(window, delta, axis);
 }
 
 } // namespace KWin

@@ -124,6 +124,26 @@ public:
     virtual void switchPresetColumnWidth() {}
 
     /**
+     * Per-tile resize support. Bounded layouts return false and ignore
+     * adjustTileSize / adjustColumnRatio.
+     *
+     * @p weightDelta is in weight units (additive). The engine clamps the new
+     * weight to a sane range internally and reflows the affected column.
+     * @p axis is the direction of the resize. For a master/stack layout, the
+     * horizontal axis moves the column divider; the vertical axis moves the
+     * active leaf's share within its column. For a single-column stacked
+     * layout, only the vertical axis is meaningful.
+     */
+    virtual bool supportsPerTileResize() const { return false; }
+    virtual void adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis)
+    {
+        Q_UNUSED(window)
+        Q_UNUSED(weightDelta)
+        Q_UNUSED(axis)
+    }
+    virtual void adjustColumnRatio(qreal delta) { Q_UNUSED(delta) }
+
+    /**
      * Directional focus support. Returns the window in the requested direction
      * relative to @p from, or nullptr if there is no window in that direction.
      * If @p from is nullptr, returns the primary/first window.

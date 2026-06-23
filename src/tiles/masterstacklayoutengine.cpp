@@ -15,6 +15,18 @@
 namespace KWin
 {
 
+namespace
+{
+// Per-tile weight applied to a freshly-added leaf. 1.0 means "takes the same
+// share of its column as the other leaves", which is the natural default.
+constexpr qreal DefaultWeight = 1.0;
+
+// Minimum share of a column that a single leaf is allowed to take. Prevents
+// a user from shrinking a window to zero height by repeated shortcut presses.
+// Expressed as a fraction of the column height; 0.05 = 5% of the column.
+constexpr qreal MinWeightShare = 0.05;
+} // namespace
+
 MasterStackLayoutEngine::MasterStackLayoutEngine(QObject *parent)
     : LayoutEngine(parent)
 {
@@ -59,6 +71,17 @@ void MasterStackLayoutEngine::addWindow(Window *window)
         return;
     }
 
+    // The new leaf is appended to the end of the stack column by default. If
+    // the master column has spare slots (masterCount > current master count),
+    // promote it into master so the master area actually grows.
+    const int desiredMasters = qMin(m_masterCount, m_leaves.count() - 1);
+    const bool promote = (m_leaves.count() > 1) && (desiredMasters > m_masterWeights.count());
+    if (promote) {
+        m_masterWeights.append(DefaultWeight);
+    } else {
+        m_stackWeights.append(DefaultWeight);
+    }
+
     reflow();
 }
 
@@ -67,6 +90,14 @@ void MasterStackLayoutEngine::removeWindow(Window *window)
     const int idx = indexOfWindow(window);
     if (idx < 0) {
         return;
+    }
+
+    // Drop the weight before the leaf so the parallel-list invariant holds.
+    const int masterCount = m_masterWeights.count();
+    if (idx < masterCount) {
+        m_masterWeights.removeAt(idx);
+    } else {
+        m_stackWeights.removeAt(idx - masterCount);
     }
 
     CustomTile *leaf = m_leaves.takeAt(idx);
@@ -168,31 +199,106 @@ void MasterStackLayoutEngine::reflow()
         if (CustomTile *leaf = m_leaves.first()) {
             leaf->setRelativeGeometry(RectF(0, 0, 1, 1));
         }
+        // A single-window layout has no need for weights, but keep the
+        // invariant: one weight in the master list, none in the stack.
+        m_masterWeights = {DefaultWeight};
+        m_stackWeights.clear();
         Q_EMIT layoutChanged();
         return;
     }
 
-    // Clamp master count to at most count - 1 so there is always a stack.
-    const int masters = qMin(m_masterCount, count - 1);
-    const qreal masterWidth = m_masterRatio;
-    const qreal stackWidth = 1.0 - masterWidth;
-    const int stackCount = count - masters;
-    const qreal stackTileHeight = 1.0 / stackCount;
-
-    // Master area: left column, vertically split among master windows.
-    const qreal masterTileHeight = 1.0 / masters;
-    for (int i = 0; i < masters; ++i) {
-        if (CustomTile *leaf = m_leaves[i]) {
-            RectF geom(0.0, i * masterTileHeight, masterWidth, masterTileHeight);
-            leaf->setRelativeGeometry(geom);
+    // Sync the master/stack split with the configured masterCount. The user
+    // can change masterCount (e.g. via a future shortcut); we must not lose
+    // existing weights when a leaf is promoted from stack to master.
+    int desiredMasters = qMin(m_masterCount, count - 1);
+    if (m_masterWeights.count() > desiredMasters) {
+        // Demote excess masters back to the stack, preserving their weights.
+        const int demote = m_masterWeights.count() - desiredMasters;
+        for (int i = 0; i < demote; ++i) {
+            m_stackWeights.prepend(m_masterWeights.takeLast());
+        }
+    } else if (m_masterWeights.count() < desiredMasters) {
+        // Promote leaves from the stack into the master column.
+        const int promote = desiredMasters - m_masterWeights.count();
+        for (int i = 0; i < promote && !m_stackWeights.isEmpty(); ++i) {
+            m_masterWeights.append(m_stackWeights.takeFirst());
         }
     }
 
-    // Stack area: right column, vertical split.
+    const int masters = m_masterWeights.count();
+    const int stackCount = m_stackWeights.count();
+    const qreal masterWidth = m_masterRatio;
+    const qreal stackWidth = 1.0 - masterWidth;
+
+    // Compute per-leaf heights by weight, then apply a floor + renormalisation
+    // pass so no leaf shrinks below MinWeightShare of its column.
+    auto distribute = [](const QList<qreal> &weights, qreal columnH) {
+        QList<qreal> heights(weights.size(), 0.0);
+        if (weights.isEmpty() || columnH <= 0.0) {
+            return heights;
+        }
+        qreal totalWeight = 0.0;
+        for (qreal w : weights) {
+            totalWeight += std::max(w, qreal(0.0001));
+        }
+        for (int i = 0; i < weights.size(); ++i) {
+            heights[i] = (std::max(weights[i], qreal(0.0001)) / totalWeight) * columnH;
+        }
+        // Floor pass: if any leaf is below the share floor, give it the floor
+        // and take the deficit from the largest other leaf. Iterate a couple
+        // of times so multiple starved leaves are handled.
+        const qreal floor = columnH * MinWeightShare;
+        for (int pass = 0; pass < 4; ++pass) {
+            bool anyStarved = false;
+            for (int i = 0; i < heights.size(); ++i) {
+                if (heights[i] < floor) {
+                    qreal deficit = floor - heights[i];
+                    // Find the largest other leaf to take the deficit.
+                    int donorIdx = -1;
+                    qreal donorH = -1.0;
+                    for (int j = 0; j < heights.size(); ++j) {
+                        if (j != i && heights[j] > donorH) {
+                            donorH = heights[j];
+                            donorIdx = j;
+                        }
+                    }
+                    if (donorIdx < 0 || donorH - deficit < floor) {
+                        // Cannot satisfy the floor without starving the donor.
+                        // Skip this pass; subsequent passes may settle it.
+                        break;
+                    }
+                    heights[donorIdx] -= deficit;
+                    heights[i] = floor;
+                    anyStarved = true;
+                }
+            }
+            if (!anyStarved) {
+                break;
+            }
+        }
+        return heights;
+    };
+
+    const QList<qreal> masterHeights = distribute(m_masterWeights, 1.0);
+    const QList<qreal> stackHeights = distribute(m_stackWeights, 1.0);
+
+    // Master area: left column, vertical distribution by weight.
+    qreal masterY = 0.0;
+    for (int i = 0; i < masters; ++i) {
+        if (CustomTile *leaf = m_leaves[i]) {
+            const qreal h = masterHeights.value(i, 1.0 / qMax(masters, 1));
+            leaf->setRelativeGeometry(RectF(0.0, masterY, masterWidth, h));
+            masterY += h;
+        }
+    }
+
+    // Stack area: right column, vertical distribution by weight.
+    qreal stackY = 0.0;
     for (int i = 0; i < stackCount; ++i) {
         if (CustomTile *leaf = m_leaves[masters + i]) {
-            RectF geom(masterWidth, i * stackTileHeight, stackWidth, stackTileHeight);
-            leaf->setRelativeGeometry(geom);
+            const qreal h = stackHeights.value(i, 1.0 / qMax(stackCount, 1));
+            leaf->setRelativeGeometry(RectF(masterWidth, stackY, stackWidth, h));
+            stackY += h;
         }
     }
 
@@ -217,6 +323,35 @@ void MasterStackLayoutEngine::setMasterCount(int count)
     }
     m_masterCount = count;
     reflow();
+}
+
+void MasterStackLayoutEngine::adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis)
+{
+    if (axis == Qt::Horizontal) {
+        // Horizontal resize on a master/stack layout moves the column divider
+        // so the active window's column grows at the expense of the other.
+        setMasterRatio(m_masterRatio + weightDelta);
+        return;
+    }
+
+    // Vertical resize: change the leaf's weight inside its column.
+    const QPair<int, bool> location = columnIndexOfWindow(window);
+    if (location.first < 0) {
+        return;
+    }
+    QList<qreal> &weights = location.second ? m_masterWeights : m_stackWeights;
+    const int idx = location.first;
+    weights[idx] = std::clamp(weights[idx] + weightDelta, m_minWeight, m_maxWeight);
+    reflow();
+}
+
+QPair<int, bool> MasterStackLayoutEngine::columnIndexOfWindow(Window *window) const
+{
+    const int idx = indexOfWindow(window);
+    if (idx < 0) {
+        return {-1, false};
+    }
+    return {idx < m_masterWeights.count() ? idx : idx - m_masterWeights.count(), idx < m_masterWeights.count()};
 }
 
 QList<Window *> MasterStackLayoutEngine::windows() const

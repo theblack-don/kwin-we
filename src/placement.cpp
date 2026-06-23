@@ -14,6 +14,8 @@
 #include "cursor.h"
 #include "options.h"
 #include "rules.h"
+#include "tiling/tilingstate.h"
+#include "tiling/tilingcontroller.h"
 #include "virtualdesktops.h"
 #include "window.h"
 #include "workspace.h"
@@ -665,6 +667,16 @@ void Window::growHorizontal()
     if (!isResizable()) {
         return;
     }
+    // For tiled windows, route to the native tiling controller so the
+    // active window's leaf grows and its column-mates shrink
+    // proportionally. This makes the KDE-standard "Expand Window
+    // Horizontally" shortcut layout-aware.
+    if (tilingState().mode == TilingState::Mode::Tiled) {
+        if (auto *controller = workspace()->tilingController()) {
+            controller->growActiveTileSize(Qt::Horizontal);
+        }
+        return;
+    }
     RectF geom = moveResizeGeometry();
     geom.setRight(workspace()->packPositionRight(this, geom.right(), true));
     QSizeF adjsize = constrainFrameSize(geom.size(), SizeModeFixedW);
@@ -699,6 +711,12 @@ void Window::shrinkHorizontal()
     if (!isResizable()) {
         return;
     }
+    if (tilingState().mode == TilingState::Mode::Tiled) {
+        if (auto *controller = workspace()->tilingController()) {
+            controller->shrinkActiveTileSize(Qt::Horizontal);
+        }
+        return;
+    }
     RectF geom = moveResizeGeometry();
     geom.setRight(workspace()->packPositionLeft(this, geom.right(), false) + 1);
     if (geom.width() <= 1) {
@@ -722,6 +740,12 @@ void Workspace::slotWindowExpandVertical()
 void Window::growVertical()
 {
     if (!isResizable()) {
+        return;
+    }
+    if (tilingState().mode == TilingState::Mode::Tiled) {
+        if (auto *controller = workspace()->tilingController()) {
+            controller->growActiveTileSize(Qt::Vertical);
+        }
         return;
     }
     RectF geom = moveResizeGeometry();
@@ -754,6 +778,12 @@ void Workspace::slotWindowShrinkVertical()
 void Window::shrinkVertical()
 {
     if (!isResizable()) {
+        return;
+    }
+    if (tilingState().mode == TilingState::Mode::Tiled) {
+        if (auto *controller = workspace()->tilingController()) {
+            controller->shrinkActiveTileSize(Qt::Vertical);
+        }
         return;
     }
     RectF geom = moveResizeGeometry();
