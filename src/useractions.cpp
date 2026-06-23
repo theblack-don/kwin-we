@@ -1027,12 +1027,20 @@ void Workspace::initShortcuts()
     }, true);
     initShortcut("Tiling Move Window Left Output", i18n("Tiling Move Window Left Output"), Qt::META | Qt::SHIFT | Qt::CTRL | Qt::Key_Left, [this]() {
         if (m_tilingController) {
+            Window *w = Workspace::self()->activeWindow();
             m_tilingController->moveWindowToOutput(TilingController::TilingDirection::West);
+            if (w) {
+                Workspace::self()->requestFocus(w);
+            }
         }
     }, true);
     initShortcut("Tiling Move Window Right Output", i18n("Tiling Move Window Right Output"), Qt::META | Qt::SHIFT | Qt::CTRL | Qt::Key_Right, [this]() {
         if (m_tilingController) {
+            Window *w = Workspace::self()->activeWindow();
             m_tilingController->moveWindowToOutput(TilingController::TilingDirection::East);
+            if (w) {
+                Workspace::self()->requestFocus(w);
+            }
         }
     }, true);
     initShortcut("Tiling Cycle Layout", i18n("Tiling Cycle Layout"), QKeySequence(), [this]() {
@@ -1552,6 +1560,9 @@ void activeWindowToDesktop(VirtualDesktopManager::Direction direction)
     }
     ws->sendWindowToDesktops(window, {newCurrent}, true);
     vds->setCurrent(newCurrent, window->output());
+    // i3/dwm-style: the moved window follows the user to the new desktop
+    // and receives focus there, instead of being left behind.
+    ws->requestFocus(window);
 }
 
 void Workspace::slotWindowToDesktopRight()

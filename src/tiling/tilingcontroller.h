@@ -119,6 +119,7 @@ private:
     Window *windowUnderCursorInEngine(LayoutEngine *engine) const;
     void addWindowToLayout(Window *window, LogicalOutput *output, VirtualDesktop *desktop);
     void removeWindowFromLayouts(Window *window);
+    void migrateWindow(Window *window, LogicalOutput *newOutput, VirtualDesktop *newDesktop);
     LayoutEngine *activeLayoutEngine() const;
     LayoutEngine *layoutEngineForWindow(Window *window, LogicalOutput **output = nullptr, VirtualDesktop **desktop = nullptr) const;
     Window *activeTiledWindow() const;

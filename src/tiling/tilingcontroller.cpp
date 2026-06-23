@@ -422,9 +422,14 @@ void TilingController::onWindowAdded(Window *window)
     // "Window to Next/Previous/Up/Down Desktop" shortcuts) the layout engines
     // need to migrate the window so it stays tiled on the new desktop and the
     // old layout reflows to fill the empty slot.
+    //
+    // NOTE: Qt::UniqueConnection does not work with lambda receivers (Qt
+    // silently drops the connection with a runtime warning), so we omit it
+    // here. onWindowAdded is invoked exactly once per window via the
+    // windowAdded signal, so the connection is naturally single-shot per
+    // window and there is no need to deduplicate.
     connect(window, &Window::desktopsChanged, this,
-            [this, window]() { onWindowDesktopsChanged(window); },
-            Qt::UniqueConnection);
+            [this, window]() { onWindowDesktopsChanged(window); });
 
     // When the decoration is (re-)applied, it overwrites the window's
     // borderRadius. Re-apply our corner radius if the window is tiled.
@@ -432,7 +437,7 @@ void TilingController::onWindowAdded(Window *window)
         if (window->tilingState().mode == TilingState::Mode::Tiled) {
             applyCornerRadius(window);
         }
-    }, Qt::UniqueConnection);
+    });
 
     // Don't touch already-managed windows (e.g. on-all-desktops already handled).
     if (window->tilingState().mode != TilingState::Mode::Floating) {
@@ -478,16 +483,22 @@ void TilingController::addWindowToLayout(Window *window, LogicalOutput *output, 
 
     LayoutEngine *engine = manager->layoutEngine(desktop);
     if (!engine) {
+        qWarning() << "TilingController: failed to obtain engine for output"
+                   << output->name() << "desktop" << desktop->id();
         return;
     }
 
     engine->addWindow(window);
 
-    // If the window did not end up managed, it will appear floating. Make
-    // sure our state reflects reality.
+    // If the window did not end up managed, surface the failure in logs but
+    // do NOT silently flip the mode to Floating. The caller (migrateWindow or
+    // onWindowAdded) is responsible for the mode, and the next desktop/output
+    // change will trigger updateWindowVisibilityAndActivateOnDesktopChange to
+    // re-evaluate the tile and snap the geometry correctly.
     if (!layoutEngineForWindow(window)) {
-        qWarning() << "TilingController: window" << window->caption() << "was not managed by any layout engine";
-        window->tilingState().mode = TilingState::Mode::Floating;
+        qWarning() << "TilingController: window" << window->caption()
+                   << "was not managed by any layout engine after addWindow; "
+                      "leaving tilingState().mode untouched";
     }
 }
 
@@ -508,6 +519,37 @@ void TilingController::removeWindowFromLayouts(Window *window)
             }
         }
     }
+}
+
+void TilingController::migrateWindow(Window *window, LogicalOutput *newOutput, VirtualDesktop *newDesktop)
+{
+    if (!m_workspace || !window || !newOutput || !newDesktop) {
+        return;
+    }
+
+    // Find whichever engine currently owns this window, if any. The lookup is
+    // an O(outputs * desktops) walk; that's acceptable because desktop/output
+    // changes are infrequent (single keypresses).
+    LogicalOutput *oldOutput = nullptr;
+    VirtualDesktop *oldDesktop = nullptr;
+    LayoutEngine *oldEngine = layoutEngineForWindow(window, &oldOutput, &oldDesktop);
+
+    // Nothing to do if the window is already in the engine for the destination
+    // (output, desktop) pair. Avoids accidental reflows on no-op changes.
+    if (oldEngine && oldOutput == newOutput && oldDesktop == newDesktop) {
+        return;
+    }
+
+    // Release the source: the engine reflows, so the remaining tiled windows
+    // on the source desktop fill the freed slot.
+    if (oldEngine) {
+        oldEngine->removeWindow(window);
+    }
+
+    // Join the destination engine. addWindowToLayout creates the engine on
+    // the new (output, desktop) if one doesn't exist yet, so the first time
+    // a window ever lands on a desktop it still tiles correctly.
+    addWindowToLayout(window, newOutput, newDesktop);
 }
 
 bool TilingController::shouldTile(const Window *window) const
@@ -772,18 +814,16 @@ void TilingController::onWindowDesktopsChanged(Window *window)
         return;
     }
 
-    // Remove the window from ALL layout engines across all outputs and desktops.
-    // Using removeWindowFromLayouts() ensures no stale references remain, even
-    // if the window was somehow registered in an unexpected engine (e.g. due to
-    // output changes during the move operation). Each engine's removeWindow() is
-    // a no-op if the window isn't present, so this is safe.
-    removeWindowFromLayouts(window);
-
     LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
     if (!output) {
         return;
     }
-    addWindowToLayout(window, output, newDesktop);
+
+    // Use the shared migration helper so the desktop-change path is
+    // identical to the monitor-change path. The helper finds the old
+    // engine, releases the window from it (the source reflows), then adds
+    // the window to the engine for the destination (output, desktop).
+    migrateWindow(window, output, newDesktop);
 }
 
 Window *TilingController::windowUnderCursorInEngine(LayoutEngine *engine) const
@@ -996,18 +1036,25 @@ void TilingController::moveWindowToOutput(TilingDirection direction)
         return;
     }
 
-    LogicalOutput *oldOutput = nullptr;
-    VirtualDesktop *oldDesktop = nullptr;
-    LayoutEngine *oldEngine = layoutEngineForWindow(window, &oldOutput, &oldDesktop);
-    if (oldEngine) {
-        oldEngine->removeWindow(window);
+    // Capture the desktop before sendToOutput, because the helper's lookup of
+    // the old engine needs to find the engine on (oldOutput, oldDesktop).
+    // The window is moved to the same desktop it was on, just on the new
+    // output. If the window was on all desktops or had no desktop, fall back
+    // to the target output's current desktop.
+    VirtualDesktop *desktop = window->desktops().isEmpty()
+        ? VirtualDesktopManager::self()->currentDesktop(targetOutput)
+        : window->desktops().constFirst();
+    if (!desktop) {
+        return;
     }
 
     // Move window to target output, preserving desktop membership.
     window->sendToOutput(targetOutput);
 
-    VirtualDesktop *desktop = oldDesktop ? oldDesktop : VirtualDesktopManager::self()->currentDesktop(targetOutput);
-    addWindowToLayout(window, targetOutput, desktop);
+    // Use the shared migration helper so monitor moves and desktop moves
+    // follow the exact same engine-swap path. The helper is idempotent for
+    // no-op moves.
+    migrateWindow(window, targetOutput, desktop);
 }
 
 } // namespace KWin
