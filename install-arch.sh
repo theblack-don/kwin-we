@@ -81,7 +81,7 @@ install_dependencies() {
         kservice ksvg kwidgetsaddons kwindowsystem kdeclarative kcmutils \
         knewstuff kxmlgui krunner knotifications kirigami \
         kwayland kdecoration kscreenlocker knighttime plasma-wayland-protocols \
-        plasma-activities libplasma plasma-workspace milou aurorae breeze \
+        plasma-activities libplasma plasma-workspace kscreen milou aurorae breeze \
         libepoxy vulkan-headers vulkan-icd-loader libglvnd \
         wayland wayland-protocols \
         libxkbcommon libxkbcommon-x11 \

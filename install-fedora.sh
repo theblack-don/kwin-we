@@ -85,7 +85,7 @@ install_dependencies() {
         kwayland-devel kdecoration-devel kscreenlocker-devel \
         knighttime-devel plasma-wayland-protocols-devel \
         plasma-activities-devel libplasma-devel plasma-workspace-devel \
-        plasma-milou aurorae plasma-breeze \
+        plasma-milou aurorae plasma-breeze kscreen \
         libepoxy-devel vulkan-loader-devel vulkan-headers \
         wayland-devel wayland-protocols-devel \
         libxkbcommon-devel libxkbcommon-x11-devel \

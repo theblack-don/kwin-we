@@ -110,7 +110,7 @@ install_dependencies() {
         kwayland-dev kdecoration-dev kscreenlocker-dev knighttime-dev \
         plasma-wayland-protocols \
         plasma-activities-dev libplasma-dev plasma-workspace-dev \
-        milou aurorae breeze breeze-icon-theme breeze-cursor-theme \
+        kscreen milou aurorae breeze breeze-icon-theme breeze-cursor-theme \
         libepoxy-dev libvulkan-dev vulkan-headers \
         libwayland-dev wayland-protocols \
         libxkbcommon-dev libxkbcommon-x11-dev \
