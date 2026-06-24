@@ -63,31 +63,70 @@ TilingController::TilingController(Workspace *workspace)
     // tail. KSharedConfig caches parsed values in memory; without
     // reparseConfiguration() the second read after an external edit would
     // see stale data even though the watcher fired.
+    //
+    // KConfigWatcher relies on the kconfig D-Bus notify interface and
+    // only works for configs opened with a *relative* name. noctalia.colors
+    // is opened via QStandardPaths::locate() which returns an absolute
+    // path, so we fall back to a QFileSystemWatcher for that file. The
+    // kdeglobals config below is opened with a relative name and so the
+    // KConfigWatcher path is correct there.
     const QString noctaliaPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("color-schemes/noctalia.colors"));
     if (!noctaliaPath.isEmpty()) {
         m_noctaliaConfig = KSharedConfig::openConfig(noctaliaPath, KConfig::SimpleConfig);
+        m_noctaliaPath = noctaliaPath;
         m_noctaliaWatcher = KConfigWatcher::create(m_noctaliaConfig);
+        // The KConfigWatcher is best-effort for the absolute-path case
+        // above. We still install it so we get notified for kconfig-style
+        // (in-process) writes; for external writes the QFileSystemWatcher
+        // below is what actually fires.
         connect(m_noctaliaWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
-            readNoctaliaColors();
-            if (usesNoctaliaSource()) {
-                updateBorders();
+            onColorSourcesChanged();
+        });
+
+        m_noctaliaFsWatcher = new QFileSystemWatcher(this);
+        m_noctaliaFsWatcher->addPath(noctaliaPath);
+        connect(m_noctaliaFsWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &) {
+            // Re-arm the watcher: many editors (and the kconfig writer)
+            // use atomic-rename semantics which invalidate the inotify
+            // watch on the original inode. Re-adding the path restores
+            // the watch on the new inode.
+            if (!m_noctaliaPath.isEmpty()) {
+                m_noctaliaFsWatcher->addPath(m_noctaliaPath);
             }
+            onColorSourcesChanged();
         });
     }
     m_kdeglobalsConfig = KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::FullConfig);
     m_kdeglobalsWatcher = KConfigWatcher::create(m_kdeglobalsConfig);
     connect(m_kdeglobalsWatcher.data(), &KConfigWatcher::configChanged, this, [this]() {
+        onColorSourcesChanged();
+    });
+
+    // Debounce: a single Noctalia theme switch can fire multiple
+    // fileChanged events (write-to-tmp + rename produces two), and the
+    // KConfigWatcher for kdeglobals can fire repeatedly during a kcmshell
+    // save. Coalesce them into a single re-read + repaint.
+    m_colorReloadTimer.setSingleShot(true);
+    m_colorReloadTimer.setInterval(50);
+    connect(&m_colorReloadTimer, &QTimer::timeout, this, [this]() {
+        readNoctaliaColors();
         readSystemAccent();
-        if (m_colorSourceActive == ColorSource::SystemAccent
-            || m_colorSourceInactive == ColorSource::SystemAccent
-            || m_colorSourceInactive == ColorSource::SystemAccentFaded) {
-            updateBorders();
-        }
+        updateBorders();
     });
 
     // Initial reads so the very first border paint already has the right color.
     readNoctaliaColors();
     readSystemAccent();
+}
+
+void TilingController::onColorSourcesChanged()
+{
+    // Start (or restart) the debounce window. The timer will fire once
+    // the dust settles, at which point we re-read both color sources and
+    // repaint every window. Calling updateBorders() unconditionally is
+    // cheap when nothing changed and correct when the user just toggled
+    // a color source in the KCM.
+    m_colorReloadTimer.start();
 }
 
 TilingController::~TilingController() = default;

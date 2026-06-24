@@ -15,9 +15,11 @@
 #include <KSharedConfig>
 
 #include <QColor>
+#include <QFileSystemWatcher>
 #include <QHash>
 #include <QObject>
 #include <QPointer>
+#include <QTimer>
 
 class KConfigGroup;
 
@@ -143,6 +145,10 @@ private Q_SLOTS:
     void onInteractiveMoveResizeStarted();
     void onInteractiveMoveResizeFinished();
     void onWindowDesktopsChanged(Window *window);
+    // Called when the noctalia colors file (or kdeglobals) reports a
+    // change. Debounces the actual re-read so we only re-resolve colors
+    // once per batch of file events.
+    void onColorSourcesChanged();
 
 private:
     bool shouldTile(const Window *window) const;
@@ -207,6 +213,15 @@ private:
     KSharedConfigPtr m_noctaliaConfig;
     KSharedConfigPtr m_kdeglobalsConfig;
     KConfigWatcher::Ptr m_noctaliaWatcher;
+    // QFileSystemWatcher is used for the noctalia colors file because
+    // KConfigWatcher silently refuses to watch absolute paths, and
+    // QStandardPaths::locate() returns an absolute path.
+    QFileSystemWatcher *m_noctaliaFsWatcher = nullptr;
+    QString m_noctaliaPath;
+    // Debounce the color re-reads: editors and shell-integration daemons
+    // often rewrite the file in two steps (write tmp + rename), which
+    // produces multiple fileChanged events in quick succession.
+    QTimer m_colorReloadTimer;
     KConfigWatcher::Ptr m_kdeglobalsWatcher;
 
     struct MoveContext {
