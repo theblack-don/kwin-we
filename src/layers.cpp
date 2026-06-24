@@ -637,6 +637,40 @@ QList<Window *> Workspace::constrainedStackingOrder()
         }
     }
 
+    // Ensure floating windows are stacked above tiled windows within each layer.
+    // Without this, clicking on a tiled window or other user actions could raise it
+    // above a floating window, which would defeat the expectation that floating
+    // windows always stay on top of tiled ones.
+    //
+    // We process the list layer-by-layer: for each contiguous block of windows in
+    // the same layer, any floating windows are moved to the end of that block.
+    // This preserves the layer-based ordering constraint system already in place.
+    {
+        QList<Window *> reordered;
+        reordered.reserve(stacking.size());
+        QList<Window *> floatingInLayer;
+        Layer currentLayer = NumLayers;
+
+        for (Window *w : std::as_const(stacking)) {
+            const Layer wLayer = w->layer();
+            if (wLayer != currentLayer) {
+                // Flush any pending floating windows from the previous layer block.
+                reordered.append(floatingInLayer);
+                floatingInLayer.clear();
+                currentLayer = wLayer;
+            }
+            if (w->tilingState().mode == TilingState::Mode::Floating) {
+                floatingInLayer.append(w);
+            } else {
+                reordered.append(w);
+            }
+        }
+        // Flush the last layer's floating windows.
+        reordered.append(floatingInLayer);
+
+        stacking = std::move(reordered);
+    }
+
     return stacking;
 }
 

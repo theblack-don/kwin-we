@@ -74,6 +74,12 @@ bool TilingRules::isFloating(const Window *window) const
     if (m_floatUtility && window->isUtility()) {
         return true;
     }
+    // On Wayland, dialog and utility windows are represented as transient windows
+    // (xdg-toplevel with a parent). If floatDialog or floatUtility is enabled,
+    // check transiency as a Wayland-compatible fallback.
+    if ((m_floatDialog || m_floatUtility) && window->isTransient()) {
+        return true;
+    }
     if (window->isPopupWindow() || window->isAppletPopup()) {
         return true;
     }
@@ -104,8 +110,9 @@ bool TilingRules::matchClass(const Window *window, const QStringList &patterns) 
     }
     const QString resourceClass = window->resourceClass().toLower();
     const QString resourceName = window->resourceName().toLower();
+    const QString desktopFile = window->desktopFileName().toLower();
     for (const QString &pattern : patterns) {
-        if (resourceClass.contains(pattern) || resourceName.contains(pattern)) {
+        if (resourceClass.contains(pattern) || resourceName.contains(pattern) || desktopFile.contains(pattern)) {
             return true;
         }
     }
