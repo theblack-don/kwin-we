@@ -48,11 +48,12 @@
       <max>1000</max>
     </entry>
     <entry name="tilingBorderMode" key="TilingBorderMode" type="Enum">
-      <label>Border display mode for tiled windows</label>
+      <label>Border display mode for windows</label>
       <choices>
         <choice name="None"/>
         <choice name="AllTiled"/>
         <choice name="ActiveOnly"/>
+        <choice name="AllWindows"/>
       </choices>
       <default>None</default>
     </entry>

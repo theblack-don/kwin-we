@@ -379,7 +379,8 @@ KCM.SimpleKCM {
                 model: [
                     i18n("None"),
                     i18n("All tiled windows"),
-                    i18n("Active window only")
+                    i18n("Active window only"),
+                    i18n("All windows")
                 ]
                 currentIndex: kcm.settings.tilingBorderMode
                 onActivated: kcm.settings.tilingBorderMode = currentIndex

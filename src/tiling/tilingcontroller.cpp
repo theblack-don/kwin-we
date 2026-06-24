@@ -117,6 +117,8 @@ void TilingController::reconfigure()
         m_borderMode = BorderMode::AllTiled;
     } else if (borderModeString == QLatin1String("ActiveOnly")) {
         m_borderMode = BorderMode::ActiveOnly;
+    } else if (borderModeString == QLatin1String("AllWindows")) {
+        m_borderMode = BorderMode::AllWindows;
     } else {
         m_borderMode = BorderMode::None;
     }
@@ -264,6 +266,7 @@ void TilingController::updateBorders()
 
     Window *activeWindow = m_workspace->activeWindow();
     const bool activeOnly = (m_borderMode == BorderMode::ActiveOnly);
+    const bool allWindows = (m_borderMode == BorderMode::AllWindows);
 
     for (Window *window : m_workspace->windows()) {
         if (!window || window->isDeleted()) {
@@ -271,10 +274,41 @@ void TilingController::updateBorders()
         }
 
         const bool isTiled = (window->tilingState().mode == TilingState::Mode::Tiled);
+        // AllWindows should still skip non-application surfaces: the
+        // desktop background, panels/docks, notifications, OSDs, screen
+        // locker, and the compositor's own outline. Drawing a border on
+        // them produces the visual artifacts seen in the AllWindows
+        // preview (border on the wallpaper, on the panel, etc.).
+        //
+        // Some shells (e.g. Noctalia) don't set the _NET_WM_WINDOW_TYPE_*
+        // hints consistently, so we also filter by KWin layer and by the
+        // skipTaskbar/skipPager hints that layer-shell windows set.
+        const Layer layer = window->layer();
+        const bool isSystemSurface = window->isDesktop()
+            || window->isDock()
+            || window->isNotification()
+            || window->isCriticalNotification()
+            || window->isOnScreenDisplay()
+            || window->isAppletPopup()
+            || window->isLockScreen()
+            || window->isInputMethod()
+            || window->isOutline()
+            || layer == DesktopLayer
+            || layer == BelowLayer
+            || layer == NotificationLayer
+            || layer == CriticalNotificationLayer
+            || layer == OnScreenDisplayLayer
+            || layer == OverlayLayer
+            || layer == PopupLayer
+            || (window->skipTaskbar() && window->skipPager());
         bool shouldShow = false;
-        if (m_borderMode != BorderMode::None && isTiled) {
-            if (!activeOnly || window == activeWindow) {
-                shouldShow = true;
+        if (m_borderMode != BorderMode::None) {
+            if (allWindows || isTiled) {
+                if (allWindows && isSystemSurface) {
+                    // Skip system surfaces even in AllWindows mode.
+                } else if (!activeOnly || window == activeWindow) {
+                    shouldShow = true;
+                }
             }
         }
 
@@ -282,7 +316,7 @@ void TilingController::updateBorders()
         const ColorSource source = (window == activeWindow) ? m_colorSourceActive : m_colorSourceInactive;
         const QColor borderColor = resolveColor(source, sourceColor);
 
-        if (isTiled) {
+        if (isTiled || allWindows) {
             applyCornerRadius(window);
         }
 

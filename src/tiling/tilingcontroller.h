@@ -136,6 +136,7 @@ public:
         None,
         AllTiled,
         ActiveOnly,
+        AllWindows,
     };
 
 private Q_SLOTS:
