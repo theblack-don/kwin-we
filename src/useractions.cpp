@@ -878,13 +878,13 @@ void Workspace::initShortcuts()
     initShortcut("Window Shrink Vertical", i18n("Shrink Window Vertically"),
                  0, &Workspace::slotWindowShrinkVertical, true);
     initShortcut("Window Quick Tile Left", i18n("Quick Tile Window to the Left"),
-                 Qt::META | Qt::Key_Left, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Left), true);
+                 0, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Left), true);
     initShortcut("Window Quick Tile Right", i18n("Quick Tile Window to the Right"),
-                 Qt::META | Qt::Key_Right, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Right), true);
+                 0, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Right), true);
     initShortcut("Window Quick Tile Top", i18n("Quick Tile Window to the Top"),
-                 Qt::META | Qt::Key_Up, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Top), true);
+                 0, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Top), true);
     initShortcut("Window Quick Tile Bottom", i18n("Quick Tile Window to the Bottom"),
-                 Qt::META | Qt::Key_Down, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Bottom), true);
+                 0, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Bottom), true);
     initShortcut("Window Quick Tile Top Left", i18n("Quick Tile Window to the Top Left"),
                  0, std::bind(&Workspace::quickTileWindow, this, QuickTileFlag::Top | QuickTileFlag::Left), true);
     initShortcut("Window Quick Tile Bottom Left", i18n("Quick Tile Window to the Bottom Left"),
