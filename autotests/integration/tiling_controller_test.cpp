@@ -49,6 +49,8 @@ private Q_SLOTS:
     void testFirstTimeEngineCreationOnDestination();
     void testNoOpWhenDesktopUnchanged();
     void testNoIntermediateMigrationDuringInteractiveMove();
+    void testMinimizeRemovesFromTiling();
+    void testUnminimizeRejoinsTiling();
 
 private:
     std::unique_ptr<KWayland::Client::Surface> m_surface;
@@ -401,6 +403,90 @@ void TilingControllerTest::testNoIntermediateMigrationDuringInteractiveMove()
         Rect(1280, 0, 1280, 1024),
     });
     VirtualDesktopManager::self()->setPerOutputVirtualDesktops(false);
+}
+
+void TilingControllerTest::testMinimizeRemovesFromTiling()
+{
+    TilingController *controller = workspace()->tilingController();
+    QVERIFY(controller);
+
+    // Two tiled windows on desktop 1.
+    m_surface = Test::createSurface();
+    m_shellSurface = Test::createXdgToplevelSurface(m_surface.get());
+    m_window = Test::renderAndWaitForShown(m_surface.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window);
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+
+    m_surface2 = Test::createSurface();
+    m_shellSurface2 = Test::createXdgToplevelSurface(m_surface2.get());
+    m_window2 = Test::renderAndWaitForShown(m_surface2.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window2);
+    QCOMPARE(m_window2->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY(m_window != m_window2);
+
+    LayoutEngine *engine = m_tileManager->layoutEngine(m_desktop1);
+    QVERIFY(engine);
+    QVERIFY(engine->windows().contains(m_window));
+    QVERIFY(engine->windows().contains(m_window2));
+    QCOMPARE(engine->windows().size(), 2);
+
+    // Minimize the first window. The bug: it stayed in the layout and
+    // left a "ghost" slot. The fix: it detaches so the layout reflows.
+    QSignalSpy minimizedSpy(m_window, &Window::minimizedChanged);
+    m_window->setMinimized(true);
+    QCOMPARE(minimizedSpy.count(), 1);
+    QVERIFY(m_window->isMinimized());
+
+    // The minimized window must no longer be in any engine (no ghost).
+    QVERIFY(!engine->windows().contains(m_window));
+    QCOMPARE(engine->windows().size(), 1);
+    QVERIFY(engine->windows().contains(m_window2));
+
+    // tilingState().mode is intentionally left as Tiled so the window
+    // re-joins the layout on unminimize.
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+}
+
+void TilingControllerTest::testUnminimizeRejoinsTiling()
+{
+    TilingController *controller = workspace()->tilingController();
+    QVERIFY(controller);
+
+    // Two tiled windows on desktop 1.
+    m_surface = Test::createSurface();
+    m_shellSurface = Test::createXdgToplevelSurface(m_surface.get());
+    m_window = Test::renderAndWaitForShown(m_surface.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window);
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+
+    m_surface2 = Test::createSurface();
+    m_shellSurface2 = Test::createXdgToplevelSurface(m_surface2.get());
+    m_window2 = Test::renderAndWaitForShown(m_surface2.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window2);
+    QCOMPARE(m_window2->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY(m_window != m_window2);
+
+    LayoutEngine *engine = m_tileManager->layoutEngine(m_desktop1);
+    QVERIFY(engine);
+    QCOMPARE(engine->windows().size(), 2);
+
+    // Minimize the first window: it detaches and the layout reflows.
+    m_window->setMinimized(true);
+    QVERIFY(m_window->isMinimized());
+    QVERIFY(!engine->windows().contains(m_window));
+    QCOMPARE(engine->windows().size(), 1);
+
+    // Unminimize: the window must re-join the tiling layout (not float).
+    QSignalSpy minimizedSpy(m_window, &Window::minimizedChanged);
+    m_window->setMinimized(false);
+    QCOMPARE(minimizedSpy.count(), 1);
+    QVERIFY(!m_window->isMinimized());
+
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY2(engine->windows().contains(m_window),
+             qPrintable(QStringLiteral("m_window did not re-join engine on unminimize; engine has %1 windows")
+                        .arg(engine->windows().size())));
+    QCOMPARE(engine->windows().size(), 2);
 }
 
 } // namespace KWin
