@@ -33,7 +33,9 @@ KWin is an easy to use, but flexible, compositor for Wayland on Linux. Its prima
 
 ## Installing KineticWE
 
-Convenience scripts are provided that install all dependencies, build kwin-we, install the [noctalia-shell](https://github.com/noctalia-dev/noctalia), and set up session files so you can launch KineticWE from a TTY.
+Convenience scripts are provided that install all dependencies, build kglobalacceld (the global shortcuts daemon), build kwin-we, install the [noctalia-shell](https://github.com/noctalia-dev/noctalia), and set up session files so you can launch KineticWE from a TTY.
+
+> **Why kglobalacceld is built from source:** kwin-we calls `keyEvent()`, `pointerPressed()`, `axisTriggered()` and `resetModifierOnlyState()` directly on the `KGlobalAccelD` object — an API introduced in kglobalacceld git master (post-6.7.0). The system package on most distros is still 6.7.0 or older and routes those calls through a separate `KGlobalAccelInterface` class, so kwin-we cannot compile against it. The install scripts clone kglobalacceld from `invent.kde.org/plasma/kglobalacceld.git` and build it into `$INSTALL_PREFIX` so kwin-we's CMake finds the newer version first. This requires **Qt ≥ 6.10** and **KF6 ≥ 6.26** (satisfied on Fedora 44+, Arch rolling, and Debian Trixie/Ubuntu 24.04+ with backports).
 
 Pick the script that matches your distribution:
 

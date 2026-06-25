@@ -23,6 +23,7 @@ set -euo pipefail
 
 INSTALL_PREFIX="${INSTALL_PREFIX:-$HOME/.local}"
 NOCTALIA_URL="${NOCTALIA_URL:-https://github.com/noctalia-dev/noctalia.git}"
+KGLOBALACCELD_URL="${KGLOBALACCELD_URL:-https://invent.kde.org/plasma/kglobalacceld.git}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_JOBS="$(nproc)"
 
@@ -137,6 +138,64 @@ install_dependencies() {
         }
 
     info "System dependencies installed."
+}
+
+# ---------------------------------------------------------------------------
+# Clone, build & install kglobalacceld (in-process global shortcuts daemon)
+# ---------------------------------------------------------------------------
+build_kglobalacceld() {
+    step "Building kglobalacceld (global shortcuts daemon)..."
+
+    # kwin-we's GlobalShortcutsManager calls keyEvent(), pointerPressed(),
+    # axisTriggered() and resetModifierOnlyState() directly on the
+    # KGlobalAccelD object.  This API was introduced in kglobalacceld git
+    # master (commit 099b1e9 "Dissolve KGlobalAccelInterface", June 2026)
+    # and is NOT present in any released version — the latest stable tag
+    # (v6.7.0) still routes those calls through a separate
+    # KGlobalAccelInterface class.  The system package is therefore too
+    # old to compile kwin-we against.
+    #
+    # We build kglobalacceld from git master into $INSTALL_PREFIX so that
+    # kwin-we's CMake (which sets CMAKE_PREFIX_PATH=$INSTALL_PREFIX) finds
+    # our newer build ahead of the system library.
+    #
+    # NOTE: kglobalacceld git master requires Qt >= 6.10.0 and KF6 >= 6.26.
+    # Fedora 44+ and Arch rolling satisfy this; older distros may not.
+
+    local kga_build_dir
+    kga_build_dir="$(mktemp -d /tmp/kglobalacceld-build.XXXXXX)"
+
+    cleanup_kga() {
+        if [[ -n "${kga_build_dir:-}" && -d "$kga_build_dir" ]]; then
+            rm -rf "$kga_build_dir"
+        fi
+    }
+    trap cleanup_kga EXIT
+
+    info "Cloning kglobalacceld into $kga_build_dir ..."
+    git clone --depth 1 "$KGLOBALACCELD_URL" "$kga_build_dir"
+
+    cd "$kga_build_dir"
+
+    info "Configuring kglobalacceld..."
+    cmake -B build -S . \
+        -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+        -DCMAKE_PREFIX_PATH="$INSTALL_PREFIX" \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DBUILD_TESTING=OFF
+
+    info "Building kglobalacceld..."
+    cmake --build build --parallel "$BUILD_JOBS"
+
+    info "Installing kglobalacceld..."
+    cmake --install build
+
+    cd "$SCRIPT_DIR"
+
+    info "kglobalacceld installed to $INSTALL_PREFIX"
+
+    cleanup_kga
+    trap - EXIT
 }
 
 # ---------------------------------------------------------------------------
@@ -262,6 +321,7 @@ main() {
     check_debian
     check_sudo
     install_dependencies
+    build_kglobalacceld
     build_kwin_we
     build_noctalia
     install_startup_script

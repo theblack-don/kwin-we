@@ -26,7 +26,7 @@ fi
 # 1. Core paths for the custom KWin build
 # ---------------------------------------------------------------------------
 export PATH="$INSTALL_PREFIX/bin:$PATH"
-export LD_LIBRARY_PATH="$INSTALL_PREFIX/lib64:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$INSTALL_PREFIX/lib64:$INSTALL_PREFIX/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 
 # KWin needs this to find its own plugins (screencast.so, screenshot.so, etc.)
 export QT_PLUGIN_PATH="$INSTALL_PREFIX/lib64/plugins"
@@ -72,7 +72,7 @@ cat > "$STARTUP_PAYLOAD" << EOF
 # KineticWE startup payload — run by KWin as a detached child process.
 
 export PATH="$INSTALL_PREFIX/bin:\$PATH"
-export LD_LIBRARY_PATH="$INSTALL_PREFIX/lib64:\$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$INSTALL_PREFIX/lib64:$INSTALL_PREFIX/lib/x86_64-linux-gnu:\$LD_LIBRARY_PATH"
 export QT_PLUGIN_PATH="$INSTALL_PREFIX/lib64/plugins"
 export XDG_CURRENT_DESKTOP=KDE
 export XDG_SESSION_TYPE=wayland
@@ -112,7 +112,23 @@ EOF
 chmod +x "$STARTUP_PAYLOAD"
 
 # ---------------------------------------------------------------------------
-# 5. Launch KWin
+# 5. Stop any competing global-shortcuts daemon
+# ---------------------------------------------------------------------------
+# kwin-we embeds kglobalacceld and registers the org.kde.kglobalaccel D-Bus
+# service at startup (KGlobalAccelD::init).  If a Plasma session was
+# previously active, the standalone plasma-kglobalaccel.service (which runs
+# /usr/libexec/kglobalacceld) may still own that D-Bus name.  When that
+# happens kwin-we's init() fails to register the service, m_kglobalAccel is
+# reset, and ALL keyboard shortcuts stop working with the error
+# "error communicating with global shortcuts service".
+#
+# Stop any competing daemon so kwin-we can claim the name cleanly.
+systemctl --user stop plasma-kglobalaccel.service 2>/dev/null || true
+pkill -x kglobalacceld 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# 6. Launch KWin
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # KWin will run the startup payload as a child process. The child inherits
 # the environment captured here (including QT_PLUGIN_PATH).
