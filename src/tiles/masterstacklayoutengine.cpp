@@ -107,6 +107,39 @@ void MasterStackLayoutEngine::removeWindow(Window *window)
     reflow();
 }
 
+void MasterStackLayoutEngine::pruneEmptyLeaves()
+{
+    if (!m_root) {
+        return;
+    }
+
+    bool changed = false;
+    // Iterate high-to-low so removing a leaf doesn't shift the indices of
+    // leaves we haven't inspected yet. The per-iteration masterCount keeps the
+    // master/stack weight split correct as leaves are removed.
+    for (int i = m_leaves.count() - 1; i >= 0; --i) {
+        const auto &leaf = m_leaves[i];
+        if (leaf && !leaf->windows().isEmpty()) {
+            continue;
+        }
+        const int masterCount = m_masterWeights.count();
+        if (i < masterCount) {
+            m_masterWeights.removeAt(i);
+        } else {
+            m_stackWeights.removeAt(i - masterCount);
+        }
+        if (leaf) {
+            m_root->destroyChild(leaf);
+        }
+        m_leaves.removeAt(i);
+        changed = true;
+    }
+
+    if (changed) {
+        reflow();
+    }
+}
+
 void MasterStackLayoutEngine::moveWindow(Window *window, int delta)
 {
     const int idx = indexOfWindow(window);

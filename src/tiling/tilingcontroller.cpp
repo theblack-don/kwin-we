@@ -521,6 +521,21 @@ void TilingController::onWindowAdded(Window *window)
     connect(window, &Window::minimizedChanged, this,
             [this, window]() { onWindowMinimizedChanged(window); });
 
+    // When a window is maximized it should vacate its tile so the layout
+    // reflows and fills the gap (otherwise a "ghost window" is left
+    // behind); when it is unmaximized it should re-join the tiling
+    // layout, exactly like a window that was just re-added. Maximize
+    // goes through Window::exitQuickTileMode(), which detaches the
+    // window from our leaf via Tile::forget(); the engine then prunes
+    // the orphaned empty leaf (see removeWindowFromLayouts /
+    // LayoutEngine::pruneEmptyLeaves) so the layout reflows.
+    //
+    // NOTE: same Qt::UniqueConnection caveat as the desktopsChanged
+    // connection above - onWindowAdded runs once per window, so the
+    // connection is naturally single-shot per window.
+    connect(window, &Window::maximizedChanged, this,
+            [this, window]() { onWindowMaximizedChanged(window); });
+
     // When the decoration is (re-)applied, it overwrites the window's
     // borderRadius. Re-apply our corner radius if the window is tiled.
     connect(window, &Window::decorationChanged, this, [this, window]() {
@@ -538,11 +553,13 @@ void TilingController::onWindowAdded(Window *window)
     TilingState::Mode mode = m_rules->initialMode(window);
     window->tilingState().mode = mode;
 
-    if (mode == TilingState::Mode::Tiled && !window->isMinimized()) {
-        // A window that is created already minimized (rare, but possible
-        // e.g. via session restore or window rules) must not be given a
-        // tile: it would leave a "ghost" slot. It will re-join the
-        // layout on unminimize via onWindowMinimizedChanged.
+    if (mode == TilingState::Mode::Tiled && !window->isMinimized()
+        && window->maximizeMode() == MaximizeRestore) {
+        // A window that is created already minimized or maximized (rare,
+        // but possible e.g. via session restore or window rules) must not
+        // be given a tile: it would leave a "ghost" slot. It will re-join
+        // the layout on unminimize/unmaximize via the corresponding
+        // onWindow*Changed handler.
         LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
         VirtualDesktop *desktop = window->desktops().isEmpty()
             ? VirtualDesktopManager::self()->currentDesktop(output)
@@ -580,6 +597,39 @@ void TilingController::onWindowMinimizedChanged(Window *window)
     }
 
     // Unminimized: re-join the tiling layout. This mirrors the
+    // float->tile path in toggleFloating() / onWindowAdded(): a fresh
+    // leaf is created, the window snaps to its tile geometry, and the
+    // engine reflows.
+    if (shouldTile(window) && !layoutEngineForWindow(window)) {
+        LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
+        VirtualDesktop *desktop = window->desktops().isEmpty()
+            ? VirtualDesktopManager::self()->currentDesktop(output)
+            : window->desktops().constFirst();
+        addWindowToLayout(window, output, desktop);
+    }
+    updateBorders();
+}
+
+void TilingController::onWindowMaximizedChanged(Window *window)
+{
+    if (!m_enabled || !window) {
+        return;
+    }
+
+    if (window->maximizeMode() != MaximizeRestore) {
+        // Maximized: release from tiling so the layout reflows and fills
+        // the gap. Maximize already detached the window from its leaf via
+        // Window::exitQuickTileMode() -> Tile::forget() (geometry-safe),
+        // so removeWindow() is a no-op for the window itself, but the
+        // pruneEmptyLeaves() call inside removeWindowFromLayouts destroys
+        // the orphaned empty leaf and reflows. tilingState().mode is
+        // deliberately left as Tiled so the window re-joins on unmaximize.
+        removeWindowFromLayouts(window);
+        updateBorders();
+        return;
+    }
+
+    // Unmaximized: re-join the tiling layout. This mirrors the
     // float->tile path in toggleFloating() / onWindowAdded(): a fresh
     // leaf is created, the window snaps to its tile geometry, and the
     // engine reflows.
@@ -641,6 +691,14 @@ void TilingController::removeWindowFromLayouts(Window *window)
         for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
             if (LayoutEngine *engine = manager->layoutEngine(desktop)) {
                 engine->removeWindow(window);
+                // removeWindow only finds the window if it is still in a
+                // leaf. Maximize detaches the window via Window::
+                // exitQuickTileMode() -> Tile::forget() before this runs,
+                // leaving an orphaned empty leaf; prune it so the layout
+                // reflows to fill the gap. A no-op for minimize (the leaf
+                // was already removed by removeWindow) and for windows that
+                // were never in this engine.
+                engine->pruneEmptyLeaves();
             }
         }
     }

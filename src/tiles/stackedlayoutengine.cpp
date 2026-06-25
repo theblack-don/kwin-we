@@ -86,6 +86,33 @@ void StackedLayoutEngine::removeWindow(Window *window)
     reflow();
 }
 
+void StackedLayoutEngine::pruneEmptyLeaves()
+{
+    if (!m_root) {
+        return;
+    }
+
+    bool changed = false;
+    // Iterate high-to-low so removing a leaf doesn't shift the indices of
+    // leaves we haven't inspected yet.
+    for (int i = m_leaves.count() - 1; i >= 0; --i) {
+        const auto &leaf = m_leaves[i];
+        if (leaf && !leaf->windows().isEmpty()) {
+            continue;
+        }
+        m_weights.removeAt(i);
+        if (leaf) {
+            m_root->destroyChild(leaf);
+        }
+        m_leaves.removeAt(i);
+        changed = true;
+    }
+
+    if (changed) {
+        reflow();
+    }
+}
+
 void StackedLayoutEngine::moveWindow(Window *window, int delta)
 {
     const int idx = indexOfWindow(window);

@@ -92,6 +92,15 @@ public:
     virtual void cancelMoveWindow(Window *window) { Q_UNUSED(window) }
 
     /**
+     * Remove any leaves whose window list is empty (e.g. a window that was
+     * detached by an outside path such as Window::exitQuickTileMode(), which
+     * maximized windows go through). The orphaned empty leaf is destroyed and
+     * the remaining leaves reflow to fill the gap. No-op when there are no
+     * empty leaves.
+     */
+    virtual void pruneEmptyLeaves() { }
+
+    /**
      * Recompute all tile geometries. Called after config changes, output resize,
      * or when the engine's internal order changes.
      */

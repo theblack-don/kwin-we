@@ -46,6 +46,7 @@ public:
     bool endMoveWindow(Window *window, Window *target) override;
     void cancelMoveWindow(Window *window) override;
     void reflow() override;
+    void pruneEmptyLeaves() override;
 
     QList<Window *> windows() const override;
     Window *primaryWindow() const override;

@@ -51,6 +51,8 @@ private Q_SLOTS:
     void testNoIntermediateMigrationDuringInteractiveMove();
     void testMinimizeRemovesFromTiling();
     void testUnminimizeRejoinsTiling();
+    void testMaximizeReleasesFromTiling();
+    void testUnmaximizeRejoinsTiling();
 
 private:
     std::unique_ptr<KWayland::Client::Surface> m_surface;
@@ -489,6 +491,118 @@ void TilingControllerTest::testUnminimizeRejoinsTiling()
     QCOMPARE(engine->windows().size(), 2);
 }
 
+
+// Helper: ack pending xdg configures until the window reaches the requested
+// maximize state. xdg-shell applies state asynchronously on ack, and tiling
+// may interleave extra configures, so we drain them in a bounded loop.
+static void ackUntilMaximize(Window *window, KWayland::Client::Surface *surface,
+                             Test::XdgToplevel *shellSurface, MaximizeMode target)
+{
+    QSignalSpy surfaceConfigureSpy(shellSurface->xdgSurface(), &Test::XdgSurface::configureRequested);
+    QSignalSpy toplevelConfigureSpy(shellSurface, &Test::XdgToplevel::configureRequested);
+    for (int i = 0; i < 20 && window->maximizeMode() != target; ++i) {
+        if (!surfaceConfigureSpy.wait(2000)) {
+            break;
+        }
+        shellSurface->xdgSurface()->ack_configure(surfaceConfigureSpy.last().at(0).value<quint32>());
+        const QSize sz = toplevelConfigureSpy.last().at(0).toSize();
+        Test::render(surface, sz.isValid() ? sz : QSize(400, 300), Qt::blue);
+        Test::flushWaylandConnection();
+    }
+}
+
+void TilingControllerTest::testMaximizeReleasesFromTiling()
+{
+    TilingController *controller = workspace()->tilingController();
+    QVERIFY(controller);
+
+    // Two tiled windows on desktop 1.
+    m_surface = Test::createSurface();
+    m_shellSurface = Test::createXdgToplevelSurface(m_surface.get());
+    m_window = Test::renderAndWaitForShown(m_surface.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window);
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+
+    m_surface2 = Test::createSurface();
+    m_shellSurface2 = Test::createXdgToplevelSurface(m_surface2.get());
+    m_window2 = Test::renderAndWaitForShown(m_surface2.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window2);
+    QCOMPARE(m_window2->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY(m_window != m_window2);
+
+    LayoutEngine *engine = m_tileManager->layoutEngine(m_desktop1);
+    QVERIFY(engine);
+    QVERIFY(engine->windows().contains(m_window));
+    QVERIFY(engine->windows().contains(m_window2));
+    QCOMPARE(engine->windows().size(), 2);
+
+    // Maximize the first window. maximize() -> exitQuickTileMode() detaches
+    // the window from our leaf synchronously (geometry-safe); maximizedChanged
+    // (on ack) triggers pruneEmptyLeaves which destroys the orphaned empty
+    // leaf and reflows. Without the fix the empty leaf lingers as a "ghost".
+    m_window->setMaximize(true, true);
+    QCOMPARE(m_window->requestedMaximizeMode(), MaximizeFull);
+    ackUntilMaximize(m_window, m_surface.get(), m_shellSurface.get(), MaximizeFull);
+    QCOMPARE(m_window->maximizeMode(), MaximizeFull);
+
+    // The maximized window must no longer be in any engine (no ghost).
+    QVERIFY(!engine->windows().contains(m_window));
+    QCOMPARE(engine->windows().size(), 1);
+    QVERIFY(engine->windows().contains(m_window2));
+
+    // tilingState().mode is intentionally left as Tiled so the window
+    // re-joins the layout on unmaximize.
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+
+    // The maximized window should be at full-screen geometry, NOT its old
+    // tile geometry (its leaf was released, geometry not clobbered).
+    const RectF screen = m_output->geometry();
+    QCOMPARE(m_window->frameGeometry(), screen);
+}
+
+void TilingControllerTest::testUnmaximizeRejoinsTiling()
+{
+    TilingController *controller = workspace()->tilingController();
+    QVERIFY(controller);
+
+    // Two tiled windows on desktop 1.
+    m_surface = Test::createSurface();
+    m_shellSurface = Test::createXdgToplevelSurface(m_surface.get());
+    m_window = Test::renderAndWaitForShown(m_surface.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window);
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+
+    m_surface2 = Test::createSurface();
+    m_shellSurface2 = Test::createXdgToplevelSurface(m_surface2.get());
+    m_window2 = Test::renderAndWaitForShown(m_surface2.get(), QSize(400, 300), Qt::blue);
+    QVERIFY(m_window2);
+    QCOMPARE(m_window2->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY(m_window != m_window2);
+
+    LayoutEngine *engine = m_tileManager->layoutEngine(m_desktop1);
+    QVERIFY(engine);
+    QCOMPARE(engine->windows().size(), 2);
+
+    // --- Maximize the first window (drain acks until applied) ---
+    m_window->setMaximize(true, true);
+    ackUntilMaximize(m_window, m_surface.get(), m_shellSurface.get(), MaximizeFull);
+    QCOMPARE(m_window->maximizeMode(), MaximizeFull);
+    QVERIFY(!engine->windows().contains(m_window));
+    QCOMPARE(engine->windows().size(), 1);
+
+    // --- Unmaximize (drain acks until restored) ---
+    m_window->setMaximize(false, false);
+    QCOMPARE(m_window->requestedMaximizeMode(), MaximizeRestore);
+    ackUntilMaximize(m_window, m_surface.get(), m_shellSurface.get(), MaximizeRestore);
+    QCOMPARE(m_window->maximizeMode(), MaximizeRestore);
+
+    // The window must re-join the tiling layout (not float).
+    QCOMPARE(m_window->tilingState().mode, TilingState::Mode::Tiled);
+    QVERIFY2(engine->windows().contains(m_window),
+             qPrintable(QStringLiteral("m_window did not re-join engine on unmaximize; engine has %1 windows")
+                        .arg(engine->windows().size())));
+    QCOMPARE(engine->windows().size(), 2);
+}
 } // namespace KWin
 
 WAYLANDTEST_MAIN(KWin::TilingControllerTest)
