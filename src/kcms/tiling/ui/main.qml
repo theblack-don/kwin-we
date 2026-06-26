@@ -137,6 +137,36 @@ KCM.SimpleKCM {
 
             Item {
                 Kirigami.FormData.isSection: true
+                Kirigami.FormData.label: i18n("CenterTile")
+                visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
+            }
+
+            QQC2.SpinBox {
+                id: centerTileMasterSize
+                Kirigami.FormData.label: i18n("Master size:")
+                from: 1
+                to: 10
+                value: kcm.settings.centerTileMasterSize
+                onValueModified: kcm.settings.centerTileMasterSize = value
+                visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
+                enabled: visible
+                KCM.SettingStateBinding {
+                    configObject: kcm.settings
+                    settingName: "centerTileMasterSize"
+                }
+            }
+
+            QQC2.Label {
+                visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
+                Kirigami.FormData.label: i18nc("@info", "Note:")
+                text: xi18nc("@info", "Number of <emphasis>master</emphasis> windows in the centre column of the CenterTile layout. Additional windows form two side stacks, one on each side of the centre column. Larger values give the centre column more height at the cost of making it narrower per window. The change is applied to all live CenterTile engines on <interface>Apply</interface>.")
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                opacity: 0.7
+            }
+
+            Item {
+                Kirigami.FormData.isSection: true
                 Kirigami.FormData.label: i18n("Resizing")
             }
 

@@ -170,6 +170,7 @@ private:
     QList<LayoutEngine::LayoutKind> enabledLayoutKinds() const;
     bool isLayoutEnabled(LayoutEngine::LayoutKind kind) const;
     void applyGapSettingsToOutput(LogicalOutput *output);
+    void applyCenterTileSettingsToOutput(LogicalOutput *output);
     void updateBorders();
 
     void setLayoutOn(LogicalOutput *output, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind);
@@ -183,6 +184,11 @@ private:
     // horizontal axis on a master/stack layout, otherwise a per-leaf weight
     // delta. Clamped to a sane range in reconfigure().
     qreal m_resizeStep = 0.1;
+    // Default master-size (number of centre-column windows) for the
+    // CenterTile layout. Pushed into existing CenterTile engines whenever
+    // the user changes the value in the KCM. Clamped to [1, 10] in
+    // reconfigure(); matches the bounds in the kcfg schema.
+    int m_centerTileMasterSize = 1;
     QStringList m_enabledLayouts;
     BorderMode m_borderMode = BorderMode::None;
     qreal m_borderThickness = 2.0;

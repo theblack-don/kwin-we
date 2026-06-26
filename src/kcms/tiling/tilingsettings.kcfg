@@ -104,6 +104,12 @@
       <min>0.01</min>
       <max>1.0</max>
     </entry>
+    <entry name="centerTileMasterSize" key="CenterTileMasterSize" type="Int">
+      <label>Number of master windows in the centre column of the CenterTile layout. Additional windows form side stacks on the left and right. Range 1-10.</label>
+      <default>1</default>
+      <min>1</min>
+      <max>10</max>
+    </entry>
   </group>
   <group name="TilingRules">
     <entry name="floatingClasses" key="FloatingClass" type="StringList">

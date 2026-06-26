@@ -154,6 +154,10 @@ void TilingController::reconfigure()
     // a single press span the whole column.
     m_resizeStep = std::clamp(tilingGroup.readEntry("ResizeStep", 0.1), qreal(0.01), qreal(1.0));
 
+    // Default master-size for the CenterTile layout. Clamped to [1, 10]
+    // (same range as the kcfg schema and the engine's internal bound).
+    m_centerTileMasterSize = std::clamp(tilingGroup.readEntry("CenterTileMasterSize", 1), 1, 10);
+
     const QString borderModeString = tilingGroup.readEntry("TilingBorderMode", QStringLiteral("None"));
     if (borderModeString == QLatin1String("AllTiled")) {
         m_borderMode = BorderMode::AllTiled;
@@ -199,6 +203,7 @@ void TilingController::reconfigure()
     if (m_workspace) {
         for (LogicalOutput *output : m_workspace->outputs()) {
             applyGapSettingsToOutput(output);
+            applyCenterTileSettingsToOutput(output);
         }
         updateBorders();
     }
@@ -483,6 +488,31 @@ void TilingController::applyGapSettingsToOutput(LogicalOutput *output)
         if (RootTile *root = manager->rootTile(desktop)) {
             root->setGapBetween(gapBetween);
             root->setGapMargins(gapMargins);
+        }
+    }
+}
+
+void TilingController::applyCenterTileSettingsToOutput(LogicalOutput *output)
+{
+    if (!m_workspace || !output) {
+        return;
+    }
+
+    TileManager *manager = m_workspace->tileManager(output);
+    if (!manager) {
+        return;
+    }
+
+    // Push the configured master-size into any live CenterTile engine on
+    // this output so the user-visible value matches what the KCM shows.
+    // Other layout kinds are unaffected (masterSize is a no-op for them).
+    for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
+        if (LayoutEngine *engine = manager->layoutEngine(desktop)) {
+            if (engine->layoutKind() == LayoutEngine::LayoutKind::CenterTile) {
+                if (auto *centerTileEngine = qobject_cast<CenterTileLayoutEngine *>(engine)) {
+                    centerTileEngine->setMasterSize(m_centerTileMasterSize);
+                }
+            }
         }
     }
 }

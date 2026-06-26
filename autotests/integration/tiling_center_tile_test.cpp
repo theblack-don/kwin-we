@@ -21,6 +21,9 @@
 #include "window.h"
 #include "workspace.h"
 
+#include <KConfigGroup>
+#include <KSharedConfig>
+
 namespace KWin
 {
 
@@ -69,6 +72,9 @@ private Q_SLOTS:
     void testMaximizeDetachesFromLayout();
     void testMoveBetweenOutputs();
     void testToggleFloating();
+    void testEngineMasterSizeDefaultsToOne();
+    void testEngineSetMasterSizeReflows();
+    void testConfigMasterSizePropagatesToEngine();
 
 private:
     void createTiledWindow(std::unique_ptr<KWayland::Client::Surface> *surface,
@@ -427,6 +433,104 @@ void TilingCenterTileTest::testToggleFloating()
 
     controller->toggleFloating();
     QTRY_VERIFY(m_window->tilingState().mode == TilingState::Mode::Tiled);
+}
+
+void TilingCenterTileTest::testEngineMasterSizeDefaultsToOne()
+{
+    // Create a CenterTile engine via the public path (setLayout), then read
+    // its masterSize() through the public accessor to verify the default.
+    workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
+    auto *engine = qobject_cast<CenterTileLayoutEngine *>(
+        m_tileManager->layoutEngine(m_desktop));
+    QVERIFY(engine);
+    QCOMPARE(engine->masterSize(), 1);
+}
+
+void TilingCenterTileTest::testEngineSetMasterSizeReflows()
+{
+    // Verify that calling setMasterSize() on a live engine updates the
+    // masterSize() value, and that the geometry reflows accordingly. With
+    // three windows and masterSize=2, the centre column holds two stacked
+    // windows; with masterSize=1, the centre column holds one window and
+    // the third goes into a side stack. The x-coordinate of the window that
+    // was the bottom-of-master column flips to a side-stack x.
+    workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
+    createTiledWindow(&m_surface, &m_shellSurface, &m_window);
+    createTiledWindow(&m_surface2, &m_shellSurface2, &m_window2);
+    createTiledWindow(&m_surface3, &m_shellSurface3, &m_window3);
+    QVERIFY(m_window && m_window2 && m_window3);
+
+    auto *engine = qobject_cast<CenterTileLayoutEngine *>(
+        m_tileManager->layoutEngine(m_desktop));
+    QVERIFY(engine);
+
+    // With masterSize=1, 3 windows: 1 left + 1 master + 1 right.
+    // m_window2 is the master (centre column).
+    QCOMPARE(engine->masterSize(), 1);
+    const qreal masterXWithOne = m_window2->moveResizeGeometry().x();
+
+    // Bump masterSize to 2: now m_window + m_window2 share the centre column,
+    // m_window3 moves into the right stack.
+    engine->setMasterSize(2);
+    QCOMPARE(engine->masterSize(), 2);
+
+    // After reflow, m_window2 is still in the centre column but shares
+    // it vertically with m_window; m_window3 is now alone in the right
+    // stack (so its x is > masterXWithOne).
+    const qreal masterXWithTwo = m_window2->moveResizeGeometry().x();
+    const qreal m3XWithTwo = m_window3->moveResizeGeometry().x();
+    QVERIFY2(qFuzzyCompare(masterXWithOne, masterXWithTwo),
+             qPrintable(QStringLiteral("Master x changed unexpectedly: %1 -> %2")
+                            .arg(masterXWithOne).arg(masterXWithTwo)));
+    QVERIFY2(m3XWithTwo > masterXWithTwo,
+             qPrintable(QStringLiteral("Window 3 not in right stack: x=%1, master x=%2")
+                            .arg(m3XWithTwo).arg(masterXWithTwo)));
+
+    // Setting the same value again is a no-op (reflow is skipped).
+    engine->setMasterSize(2);
+    QCOMPARE(engine->masterSize(), 2);
+
+    // Out-of-range values are clamped to [1, 10].
+    engine->setMasterSize(0);
+    QCOMPARE(engine->masterSize(), 1);
+    engine->setMasterSize(99);
+    QCOMPARE(engine->masterSize(), 10);
+}
+
+void TilingCenterTileTest::testConfigMasterSizePropagatesToEngine()
+{
+    // Write a new master-size to kwinrc and trigger a config reload, then
+    // verify the live CenterTile engine picked up the new value. This is
+    // the same code path the KCM Apply button takes (DBus reloadConfig ->
+    // Workspace::slotReconfigure -> TilingController::reconfigure ->
+    // applyCenterTileSettingsToOutput).
+    workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
+    auto *engine = qobject_cast<CenterTileLayoutEngine *>(
+        m_tileManager->layoutEngine(m_desktop));
+    QVERIFY(engine);
+    QCOMPARE(engine->masterSize(), 1);
+
+    KSharedConfig::Ptr config = kwinApp()->config();
+    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+    tilingGroup.writeEntry("CenterTileMasterSize", 3);
+    tilingGroup.sync();
+
+    workspace()->slotReconfigure();
+
+    QCOMPARE(engine->masterSize(), 3);
+
+    // Restoring the default via kconfig and reloading brings it back to 1.
+    tilingGroup.writeEntry("CenterTileMasterSize", 1);
+    tilingGroup.sync();
+    workspace()->slotReconfigure();
+    QCOMPARE(engine->masterSize(), 1);
+
+    // Out-of-range config values are clamped at read time, so writing 99
+    // produces 10 in the live engine.
+    tilingGroup.writeEntry("CenterTileMasterSize", 99);
+    tilingGroup.sync();
+    workspace()->slotReconfigure();
+    QCOMPARE(engine->masterSize(), 10);
 }
 
 } // namespace KWin
