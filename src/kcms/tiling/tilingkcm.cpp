@@ -221,6 +221,20 @@ void OutputGapOverridesModel::syncFromScreens()
         return;
     }
 
+    // Pull the *current* global defaults once. These become the per-monitor
+    // entries' starting values so a newly-connected monitor picks up whatever
+    // the user has set globally instead of a hardcoded fallback.
+    const TilingSettings *settings = nullptr;
+    if (TilingKCM *kcm = qobject_cast<TilingKCM *>(parent())) {
+        settings = kcm->settings();
+    }
+    const int defaultLeft = settings ? settings->gapLeft() : kDefaultGapLeft;
+    const int defaultRight = settings ? settings->gapRight() : kDefaultGapRight;
+    const int defaultTop = settings ? settings->gapTop() : kDefaultGapTop;
+    const int defaultBottom = settings ? settings->gapBottom() : kDefaultGapBottom;
+    const int defaultBetween = settings ? settings->gapBetween() : kDefaultGapBetween;
+    const QString defaultLayout = settings ? settings->defaultLayout() : QStringLiteral("MasterStack");
+
     // Drop entries for screens that are no longer connected, but keep their
     // values so the next connect re-applies them.
     QHash<QString, OutputGapOverride *> removed;
@@ -250,28 +264,93 @@ void OutputGapOverridesModel::syncFromScreens()
         if (description.trimmed().isEmpty()) {
             description = name;
         }
-        int left = kDefaultGapLeft;
-        int right = kDefaultGapRight;
-        int top = kDefaultGapTop;
-        int bottom = kDefaultGapBottom;
-        int between = kDefaultGapBetween;
-        QString defaultLayout = QStringLiteral("MasterStack");
+
+        // Start from the current global defaults so the per-monitor spinboxes
+        // show values that match the global default. Only if we have a stored
+        // override for this monitor do we restore the previous values.
+        int left = defaultLeft;
+        int right = defaultRight;
+        int top = defaultTop;
+        int bottom = defaultBottom;
+        int between = defaultBetween;
+        QString entryLayout = defaultLayout;
         if (OutputGapOverride *previous = removed.value(name)) {
             left = previous->gapLeft();
             right = previous->gapRight();
             top = previous->gapTop();
             bottom = previous->gapBottom();
             between = previous->gapBetween();
-            defaultLayout = previous->defaultLayout();
+            entryLayout = previous->defaultLayout();
         }
+
+        // If the KCM has already loaded a per-output override from kwinrc
+        // (e.g. for a monitor that was disconnected and is now back), honor
+        // those stored values over the current global default.
+        if (settings) {
+            KSharedConfigPtr config = KSharedConfig::openConfig(QStringLiteral("kwinrc"));
+            KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+            KConfigGroup outputGroup(&tilingGroup, QStringLiteral("Output %1").arg(name));
+            if (outputGroup.hasKey("GapLeft")) {
+                left = outputGroup.readEntry("GapLeft", left);
+            }
+            if (outputGroup.hasKey("GapRight")) {
+                right = outputGroup.readEntry("GapRight", right);
+            }
+            if (outputGroup.hasKey("GapTop")) {
+                top = outputGroup.readEntry("GapTop", top);
+            }
+            if (outputGroup.hasKey("GapBottom")) {
+                bottom = outputGroup.readEntry("GapBottom", bottom);
+            }
+            if (outputGroup.hasKey("GapBetween")) {
+                between = outputGroup.readEntry("GapBetween", between);
+            }
+            if (outputGroup.hasKey("DefaultLayout")) {
+                entryLayout = outputGroup.readEntry("DefaultLayout", entryLayout);
+            }
+        }
+
         beginInsertRows({}, m_entries.size(), m_entries.size());
-        addEntry(name, description, left, right, top, bottom, between, defaultLayout);
+        addEntry(name, description, left, right, top, bottom, between, entryLayout);
         endInsertRows();
     }
 
     qDeleteAll(removed);
     m_screenNames = currentNames;
     Q_EMIT countChanged();
+}
+
+/**
+ * Re-sync every entry to the current global defaults. Used when the user
+ * changes a global default (gap value, layout, available layouts) so the
+ * per-monitor page reflects "matches default" for any entry that hasn't
+ * been explicitly overridden.
+ */
+void OutputGapOverridesModel::refreshFromDefaults(const TilingSettings *settings)
+{
+    if (!settings) {
+        return;
+    }
+
+    const int defaultLeft = settings->gapLeft();
+    const int defaultRight = settings->gapRight();
+    const int defaultTop = settings->gapTop();
+    const int defaultBottom = settings->gapBottom();
+    const int defaultBetween = settings->gapBetween();
+    const QString defaultLayout = settings->defaultLayout();
+
+    beginResetModel();
+    for (OutputGapOverride *entry : std::as_const(m_entries)) {
+        // Reset every value to the new global default. setDefaultLayout
+        // already emits modified() so the model's modified flag is set.
+        entry->setGapLeft(defaultLeft);
+        entry->setGapRight(defaultRight);
+        entry->setGapTop(defaultTop);
+        entry->setGapBottom(defaultBottom);
+        entry->setGapBetween(defaultBetween);
+        entry->setDefaultLayout(defaultLayout);
+    }
+    endResetModel();
 }
 
 void OutputGapOverridesModel::load(KConfigGroup &tilingGroup, const TilingSettings *settings)
@@ -432,6 +511,51 @@ TilingKCM::TilingKCM(QObject *parent, const KPluginMetaData &metaData)
                 if (modelSaveNeeded) {
                     setRepresentsDefaults(false);
                 }
+            });
+
+    // When the user changes a *global* default (gap value, default layout,
+    // available layouts), refresh the per-monitor entries so they reflect
+    // the new defaults. Without this, changing the global default layout
+    // does not propagate to monitors that have a stored per-output
+    // override (the per-monitor page keeps showing the old value, and the
+    // override is written back unchanged on save). With this, every per-
+    // monitor entry snaps back to "matches default" the moment the global
+    // default changes, and the user only needs to touch the per-monitor
+    // page when they want a monitor-specific override.
+    connect(m_settings, &TilingSettings::defaultLayoutChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+    connect(m_settings, &TilingSettings::gapLeftChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+    connect(m_settings, &TilingSettings::gapRightChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+    connect(m_settings, &TilingSettings::gapTopChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+    connect(m_settings, &TilingSettings::gapBottomChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+    connect(m_settings, &TilingSettings::gapBetweenChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
+            });
+
+    // When the user disables a layout that some monitor's per-output
+    // override currently uses, reset those monitors to the global default
+    // so setLayout() / cycleLayout() can pick a still-enabled layout for
+    // them. Otherwise resolveLayoutKind() would silently fall back to the
+    // first enabled layout while the KCM still shows a now-disabled name
+    // in the per-monitor combo.
+    connect(m_settings, &TilingSettings::enabledLayoutsChanged,
+            this, [this]() {
+                m_gapOverridesModel->refreshFromDefaults(m_settings);
             });
 }
 

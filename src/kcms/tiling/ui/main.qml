@@ -222,9 +222,21 @@ KCM.SimpleKCM {
         Kirigami.FormLayout {
             id: gapsPage
 
-            Item {
-                Kirigami.FormData.isSection: true
-                Kirigami.FormData.label: i18n("Gaps")
+            // The global gap values shown here are *templates* used as the
+            // default for newly-connected monitors. They are not applied at
+            // runtime once a per-monitor override exists; the per-monitor
+            // page below is the source of truth at runtime. Editing these
+            // values is the right thing to do only when you want to change
+            // the defaults that a brand-new monitor will pick up; if you
+            // already have a monitor and want to change its gaps, use the
+            // per-monitor section below.
+            QQC2.Label {
+                Kirigami.FormData.label: i18nc("@info", "Default gaps:")
+                text: xi18nc("@info", "These are the default gap values used for <emphasis>new monitors</emphasis>. Existing monitors use the per-monitor values below.")
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 30
+                opacity: 0.7
             }
 
             QQC2.SpinBox {
@@ -300,7 +312,7 @@ KCM.SimpleKCM {
             QQC2.Label {
                 id: perMonitorHelp
                 Kirigami.FormData.label: i18nc("@info:placeholder", "Overrides:")
-                text: i18nc("@info", "Per-monitor gap and layout values override the defaults above. Monitors without an override use the defaults. Leave the values as-is to use defaults.")
+                text: xi18nc("@info", "Per-monitor gap and layout values override the defaults above. Monitors without an override use the defaults. Leave the values as-is to use defaults.")
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 30
@@ -354,16 +366,33 @@ KCM.SimpleKCM {
                             }
                             QQC2.ComboBox {
                                 id: perMonitorLayoutCombo
-                                property var layoutOptions: [
-                                    { text: i18n("MasterStack"), value: "MasterStack" },
-                                    { text: i18n("Stacked"), value: "Stacked" },
-                                    { text: i18n("CenterTile"), value: "CenterTile" }
-                                ]
+                                property var layoutOptions: {
+                                    // Only show layouts the user has enabled on
+                                    // the Layouts page. If nothing is enabled,
+                                    // fall back to MasterStack so the combo is
+                                    // never empty. The list is rebuilt whenever
+                                    // enabledLayouts changes, so the per-monitor
+                                    // page always reflects the current global
+                                    // "Available" selection.
+                                    const seen = kcm.settings.enabledLayouts.slice();
+                                    const opts = [];
+                                    for (let i = 0; i < seen.length; ++i) {
+                                        if (seen[i] === "MasterStack"
+                                            || seen[i] === "Stacked"
+                                            || seen[i] === "CenterTile") {
+                                            opts.push({ text: seen[i], value: seen[i] });
+                                        }
+                                    }
+                                    if (opts.length === 0) {
+                                        opts.push({ text: i18n("MasterStack"), value: "MasterStack" });
+                                    }
+                                    return opts;
+                                }
                                 model: layoutOptions
                                 textRole: "text"
                                 valueRole: "value"
                                 currentIndex: {
-                                    const cur = monitorFrame.entry ? monitorFrame.entry.defaultLayout : "MasterStack";
+                                    const cur = monitorFrame.entry ? monitorFrame.entry.defaultLayout : kcm.settings.defaultLayout;
                                     const idx = layoutOptions.findIndex(item => item.value === cur);
                                     return idx >= 0 ? idx : 0;
                                 }
@@ -381,7 +410,7 @@ KCM.SimpleKCM {
                             QQC2.SpinBox {
                                 from: 0
                                 to: 1000
-                                value: monitorFrame.entry ? monitorFrame.entry.gapLeft : 0
+                                value: monitorFrame.entry ? monitorFrame.entry.gapLeft : kcm.settings.gapLeft
                                 onValueModified: if (monitorFrame.entry) monitorFrame.entry.gapLeft = value
                             }
 
@@ -392,7 +421,7 @@ KCM.SimpleKCM {
                             QQC2.SpinBox {
                                 from: 0
                                 to: 1000
-                                value: monitorFrame.entry ? monitorFrame.entry.gapRight : 0
+                                value: monitorFrame.entry ? monitorFrame.entry.gapRight : kcm.settings.gapRight
                                 onValueModified: if (monitorFrame.entry) monitorFrame.entry.gapRight = value
                             }
 
@@ -403,7 +432,7 @@ KCM.SimpleKCM {
                             QQC2.SpinBox {
                                 from: 0
                                 to: 1000
-                                value: monitorFrame.entry ? monitorFrame.entry.gapTop : 0
+                                value: monitorFrame.entry ? monitorFrame.entry.gapTop : kcm.settings.gapTop
                                 onValueModified: if (monitorFrame.entry) monitorFrame.entry.gapTop = value
                             }
 
@@ -414,7 +443,7 @@ KCM.SimpleKCM {
                             QQC2.SpinBox {
                                 from: 0
                                 to: 1000
-                                value: monitorFrame.entry ? monitorFrame.entry.gapBottom : 0
+                                value: monitorFrame.entry ? monitorFrame.entry.gapBottom : kcm.settings.gapBottom
                                 onValueModified: if (monitorFrame.entry) monitorFrame.entry.gapBottom = value
                             }
 
@@ -425,7 +454,7 @@ KCM.SimpleKCM {
                             QQC2.SpinBox {
                                 from: 0
                                 to: 1000
-                                value: monitorFrame.entry ? monitorFrame.entry.gapBetween : 0
+                                value: monitorFrame.entry ? monitorFrame.entry.gapBetween : kcm.settings.gapBetween
                                 onValueModified: if (monitorFrame.entry) monitorFrame.entry.gapBetween = value
                             }
                         }

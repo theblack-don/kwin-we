@@ -1058,6 +1058,11 @@ void Workspace::initShortcuts()
             m_tilingController->setLayout(LayoutEngine::LayoutKind::Stacked);
         }
     }, true);
+    initShortcut("Tiling Switch To CenterTile", i18n("Tiling Switch To CenterTile"), QKeySequence(), [this]() {
+        if (m_tilingController) {
+            m_tilingController->setLayout(LayoutEngine::LayoutKind::CenterTile);
+        }
+    }, true);
 
 #if KWIN_BUILD_TABBOX
     m_tabbox->initShortcuts();

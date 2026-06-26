@@ -127,6 +127,14 @@ public:
     void load(KConfigGroup &tilingGroup, const TilingSettings *settings);
 
     /**
+     * Re-sync every entry's value to the current global defaults without
+     * touching kwinrc on disk. Used when the user changes a global default
+     * (gap, layout, available layouts) so the per-monitor page reflects
+     * "matches default" for any entry that hasn't been overridden.
+     */
+    void refreshFromDefaults(const TilingSettings *settings);
+
+    /**
      * Write the current override values into the per-output sub-groups
      * of the supplied Tiling group. Sub-groups whose values are all
      * equal to the defaults are removed to keep kwinrc tidy.
