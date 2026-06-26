@@ -38,6 +38,7 @@ public:
     enum class LayoutKind {
         MasterStack = 0,
         Stacked = 1,
+        CenterTile = 2,
     };
 
     static QString layoutKindToString(LayoutKind kind);

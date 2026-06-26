@@ -90,6 +90,21 @@ KCM.SimpleKCM {
                 }
             }
 
+            QQC2.CheckBox {
+                id: enableCenterTile
+                text: i18n("CenterTile")
+                checked: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
+                onToggled: {
+                    let layouts = kcm.settings.enabledLayouts.slice();
+                    if (checked && layouts.indexOf("CenterTile") === -1) {
+                        layouts.push("CenterTile");
+                    } else if (!checked) {
+                        layouts = layouts.filter(l => l !== "CenterTile");
+                    }
+                    kcm.settings.enabledLayouts = layouts;
+                }
+            }
+
             QQC2.Label {
                 visible: kcm.settings.enabledLayouts.length < 2
                 Kirigami.FormData.label: i18nc("@info", "Note:")
@@ -104,7 +119,8 @@ KCM.SimpleKCM {
                 Kirigami.FormData.label: i18n("Default layout:")
                 model: [
                     { text: i18n("MasterStack"), value: "MasterStack" },
-                    { text: i18n("Stacked"), value: "Stacked" }
+                    { text: i18n("Stacked"), value: "Stacked" },
+                    { text: i18n("CenterTile"), value: "CenterTile" }
                 ]
                 textRole: "text"
                 valueRole: "value"
@@ -283,7 +299,8 @@ KCM.SimpleKCM {
                                 id: perMonitorLayoutCombo
                                 property var layoutOptions: [
                                     { text: i18n("MasterStack"), value: "MasterStack" },
-                                    { text: i18n("Stacked"), value: "Stacked" }
+                                    { text: i18n("Stacked"), value: "Stacked" },
+                                    { text: i18n("CenterTile"), value: "CenterTile" }
                                 ]
                                 model: layoutOptions
                                 textRole: "text"

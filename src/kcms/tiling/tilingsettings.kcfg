@@ -10,12 +10,12 @@
       <default>true</default>
     </entry>
     <entry name="defaultLayout" key="DefaultLayout" type="String">
-      <label>Default layout used for new (output, desktop) pairs that do not have a per-monitor override. One of "MasterStack" or "Stacked".</label>
+      <label>Default layout used for new (output, desktop) pairs that do not have a per-monitor override. One of "MasterStack", "Stacked", or "CenterTile".</label>
       <default>MasterStack</default>
     </entry>
     <entry name="enabledLayouts" key="EnabledLayouts" type="StringList">
       <label>Layouts the user wants available for cycleLayout() and setLayout(). The list order also determines the cycle order.</label>
-      <default code="true">QStringList{QStringLiteral("MasterStack"), QStringLiteral("Stacked")}</default>
+      <default code="true">QStringList{QStringLiteral("MasterStack"), QStringLiteral("Stacked"), QStringLiteral("CenterTile")}</default>
     </entry>
     <entry name="gapLeft" key="GapLeft" type="Int">
       <label>Gap between the left screen edge and tiles</label>

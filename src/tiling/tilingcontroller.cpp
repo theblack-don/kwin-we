@@ -10,6 +10,7 @@
 #include "core/rect.h"
 #include "cursor.h"
 #include "scene/borderradius.h"
+#include "tiles/centertilelayoutengine.h"
 #include "tiles/layoutengine.h"
 #include "tiles/masterstacklayoutengine.h"
 #include "tiles/stackedlayoutengine.h"
@@ -38,6 +39,8 @@ std::unique_ptr<LayoutEngine> createLayoutEngine(LayoutEngine::LayoutKind kind, 
     switch (kind) {
     case LayoutEngine::LayoutKind::Stacked:
         return std::make_unique<StackedLayoutEngine>(parent);
+    case LayoutEngine::LayoutKind::CenterTile:
+        return std::make_unique<CenterTileLayoutEngine>(parent);
     case LayoutEngine::LayoutKind::MasterStack:
     default:
         return std::make_unique<MasterStackLayoutEngine>(parent);
@@ -143,7 +146,7 @@ void TilingController::reconfigure()
     // Whitelist of layouts the user wants available. Order in the list also
     // defines the cycle order used by cycleLayout().
     m_enabledLayouts = tilingGroup.readEntry("EnabledLayouts",
-        QStringList{QLatin1String("MasterStack"), QLatin1String("Stacked")});
+        QStringList{QLatin1String("MasterStack"), QLatin1String("Stacked"), QLatin1String("CenterTile")});
     m_rules->load(rulesGroup);
 
     // Per-tile resize step. Weight units; see tilingcontroller.h. Clamped to
@@ -282,6 +285,8 @@ QList<LayoutEngine::LayoutKind> TilingController::enabledLayoutKinds() const
             result.append(LayoutEngine::LayoutKind::MasterStack);
         } else if (name.compare(QLatin1String("Stacked"), Qt::CaseInsensitive) == 0) {
             result.append(LayoutEngine::LayoutKind::Stacked);
+        } else if (name.compare(QLatin1String("CenterTile"), Qt::CaseInsensitive) == 0) {
+            result.append(LayoutEngine::LayoutKind::CenterTile);
         }
     }
     if (result.isEmpty()) {
