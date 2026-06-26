@@ -281,10 +281,22 @@ void CenterTileLayoutEngine::reflow()
     qreal rightStart = 0.0;
 
     if (sizes.leftStack > 0 || sizes.rightStack > 0) {
-        masterWidth = m_masterRatio;
-        const qreal sideWidth = (1.0 - masterWidth) / 2.0;
-        leftWidth = sideWidth;
-        rightWidth = sideWidth;
+        // CustomTile::setRelativeGeometry bumps each leaf's requested width
+        // up to the tile's minimumSize (0.15, see Tile::m_minimumSize). If
+        // the requested side-stack width is narrower than that floor and
+        // the rightmost column sits at rightStart > (1 - 0.15), the bumped
+        // geometry would exceed the screen bounds and be silently rejected
+        // by CustomTile — leaving the leaf at its stale full-screen
+        // geometry and effectively hiding every other column. Clamp the
+        // effective side column width to that floor and shrink the master
+        // column to whatever's left so all three columns fit on screen.
+        constexpr qreal minColumnWidth = 0.15;
+        const qreal requestedMasterWidth = m_masterRatio;
+        const qreal requestedSideWidth = (1.0 - requestedMasterWidth) / 2.0;
+        const qreal effectiveSideWidth = std::max(requestedSideWidth, minColumnWidth);
+        masterWidth = std::max(0.0, 1.0 - 2.0 * effectiveSideWidth);
+        leftWidth = effectiveSideWidth;
+        rightWidth = effectiveSideWidth;
         leftStart = 0.0;
         masterStart = leftWidth;
         rightStart = leftWidth + masterWidth;

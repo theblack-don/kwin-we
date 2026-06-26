@@ -228,23 +228,27 @@ void TilingCenterTileTest::testSingleWindowTakesFullScreen()
 void TilingCenterTileTest::testTwoWindowsUseCenterColumn()
 {
     // With masterSize=1, 2 windows: left stack = 1, master column = 1, right
-    // stack = 0. The two windows therefore share the centre column vertically.
+    // stack = 0. Both columns are visible side-by-side; the engine bumps the
+    // side column width up to Tile::m_minimumSize.width (0.15) so the master
+    // column ends up at 1 - 2 * 0.15 = 0.7 (=70%).
     createTiledWindow(&m_surface, &m_shellSurface, &m_window);
     createTiledWindow(&m_surface2, &m_shellSurface2, &m_window2);
     QVERIFY(m_window && m_window2);
 
     const QRectF g1 = m_window->moveResizeGeometry();
     const QRectF g2 = m_window2->moveResizeGeometry();
-    // Both windows are in the centre column with masterRatio=0.75 and there
-    // are no side stacks, so the centre column takes the full width.
-    QVERIFY2(qFuzzyCompare(g1.width(), qreal(1280)),
-             qPrintable(QStringLiteral("Window 1 width %1 != 1280").arg(g1.width())));
-    QVERIFY2(qFuzzyCompare(g2.width(), qreal(1280)),
-             qPrintable(QStringLiteral("Window 2 width %1 != 1280").arg(g2.width())));
-    // They split the height in half.
-    QVERIFY2(qFuzzyCompare(g1.height() + g2.height(), qreal(1024)),
-             qPrintable(QStringLiteral("Two-window heights don't add up: %1 + %2 != 1024")
-                            .arg(g1.height()).arg(g2.height())));
+    // Both columns share the output's full width and full height.
+    QVERIFY2(qFuzzyCompare(g1.width() + g2.width(), qreal(1280)),
+             qPrintable(QStringLiteral("Two-window widths don't add up: %1 + %2 != 1280")
+                            .arg(g1.width()).arg(g2.width())));
+    QVERIFY2(qFuzzyCompare(g1.height(), qreal(1024)),
+             qPrintable(QStringLiteral("Two-window height 1 %1 != 1024").arg(g1.height())));
+    QVERIFY2(qFuzzyCompare(g2.height(), qreal(1024)),
+             qPrintable(QStringLiteral("Two-window height 2 %1 != 1024").arg(g2.height())));
+    // The master column is wider than the side column.
+    QVERIFY2(g2.width() > g1.width(),
+             qPrintable(QStringLiteral("Master %1 not wider than left stack %2")
+                            .arg(g2.width()).arg(g1.width())));
 }
 
 void TilingCenterTileTest::testThreeWindowsUseCenterAndRight()
@@ -275,6 +279,8 @@ void TilingCenterTileTest::testThreeWindowsUseCenterAndRight()
 void TilingCenterTileTest::testFourWindowsUseThreeColumns()
 {
     // With masterSize=1, 4 windows: left stack = 2, master = 1, right = 1.
+    // The first two windows are in the left stack, the third is the master,
+    // and the fourth is alone in the right stack.
     createTiledWindow(&m_surface, &m_shellSurface, &m_window);
     createTiledWindow(&m_surface2, &m_shellSurface2, &m_window2);
     createTiledWindow(&m_surface3, &m_shellSurface3, &m_window3);
@@ -285,20 +291,25 @@ void TilingCenterTileTest::testFourWindowsUseThreeColumns()
     const QRectF g2 = m_window2->moveResizeGeometry();
     const QRectF g3 = m_window3->moveResizeGeometry();
     const QRectF g4 = m_window4->moveResizeGeometry();
-    // Three columns of width masterRatio / 2*(1-masterRatio) / 2*(1-masterRatio).
-    QVERIFY2(qFuzzyCompare(g1.width() + g2.width() + g4.width(), qreal(1280)),
-             qPrintable(QStringLiteral("Four windows: widths don't add up: %1+%2+%4 != 1280")
-                            .arg(g1.width()).arg(g2.width()).arg(g4.width())));
-    QVERIFY2(g2.width() > g1.width(),
-             qPrintable(QStringLiteral("Centre %1 not wider than left %2").arg(g2.width()).arg(g1.width())));
-    QVERIFY2(g2.width() > g4.width(),
-             qPrintable(QStringLiteral("Centre %1 not wider than right %2").arg(g2.width()).arg(g4.width())));
+    // All three columns fit on the output, so the widths add up to 1280.
+    QVERIFY2(qFuzzyCompare(g1.width() + g3.width() + g4.width(), qreal(1280)),
+             qPrintable(QStringLiteral("Four windows: widths don't add up: %1+%3+%4 != 1280")
+                            .arg(g1.width()).arg(g3.width()).arg(g4.width())));
+    // The centre column is wider than each side column (after the engine
+    // clamps the side columns to Tile::m_minimumSize.width = 0.15).
+    QVERIFY2(g3.width() > g1.width(),
+             qPrintable(QStringLiteral("Centre %1 not wider than left %2").arg(g3.width()).arg(g1.width())));
+    QVERIFY2(g3.width() > g4.width(),
+             qPrintable(QStringLiteral("Centre %1 not wider than right %2").arg(g3.width()).arg(g4.width())));
+    // Left == right (symmetric clamping).
     QVERIFY2(qFuzzyCompare(g1.width(), g4.width()),
              qPrintable(QStringLiteral("Left %1 != right %2").arg(g1.width()).arg(g4.width())));
-    // Window 3 is in the left stack (it shares x with window 1, not window 2).
-    QCOMPARE(g1.x(), g3.x());
+    // Window 1 and window 2 share the left stack column (same x).
+    QCOMPARE(g1.x(), g2.x());
+    // Window 3 is the master column, so its x is past the left stack.
+    QVERIFY(g3.x() > g1.x());
     // Window 4 is alone in the right stack.
-    QVERIFY(g4.x() > g2.x());
+    QVERIFY(g4.x() > g3.x());
 }
 
 void TilingCenterTileTest::testHorizontalResizeAdjustsMasterRatio()
@@ -484,15 +495,18 @@ void TilingCenterTileTest::testEngineSetMasterRatioReflows()
              qPrintable(QStringLiteral("Master width ratio %1 != 0.4")
                             .arg(masterWidthNarrow / screenWidth)));
 
-    // Grow the centre to 80% of screen width.
-    engine->setMasterRatio(0.8);
-    QCOMPARE(engine->masterRatio(), qreal(0.8));
+    // Grow the centre to 65% of screen width. The engine clamps the
+    // effective master width to <= (1 - 2 * minimumSize.width) = 0.7 so
+    // the side columns still fit Tile::m_minimumSize, so 0.65 is well
+    // under the clamp ceiling and gives an exact 1:1 ratio.
+    engine->setMasterRatio(0.65);
+    QCOMPARE(engine->masterRatio(), qreal(0.65));
     const qreal masterWidthWide = m_window2->moveResizeGeometry().width();
     QVERIFY2(masterWidthWide > masterWidthDefault,
              qPrintable(QStringLiteral("Master did not grow: %1 -> %2")
                             .arg(masterWidthDefault).arg(masterWidthWide)));
-    QVERIFY2(qFuzzyCompare(masterWidthWide / screenWidth, qreal(0.8)),
-             qPrintable(QStringLiteral("Master width ratio %1 != 0.8")
+    QVERIFY2(qFuzzyCompare(masterWidthWide / screenWidth, qreal(0.65)),
+             qPrintable(QStringLiteral("Master width ratio %1 != 0.65")
                             .arg(masterWidthWide / screenWidth)));
 
     // Setting the same value again is a no-op (reflow is skipped, value preserved).

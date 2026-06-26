@@ -152,8 +152,16 @@ KCM.SimpleKCM {
 
                 QQC2.Slider {
                     id: centerTileMasterWidthSlider
+                    // The engine clamps the effective master width so both
+                    // side stacks always honour Tile::m_minimumSize.width
+                    // (0.15). With side stacks fixed at 0.15 each, the
+                    // master column can never exceed 1 - 2 * 0.15 = 0.7
+                    // (=70%) on screen. Anything higher would be silently
+                    // reshaped by the engine, so we cap the slider at 70%
+                    // to keep the KCM value in lock-step with what the user
+                    // actually sees on screen.
                     from: 20
-                    to: 95
+                    to: 70
                     stepSize: 1
                     value: kcm.settings.centerTileMasterWidth
                     Layout.fillWidth: true
