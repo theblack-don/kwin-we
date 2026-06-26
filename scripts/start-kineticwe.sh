@@ -37,6 +37,10 @@ export QT_PLUGIN_PATH="$INSTALL_PREFIX/lib64/plugins"
 export XDG_CURRENT_DESKTOP=KDE
 export XDG_SESSION_TYPE=wayland
 export XDG_SESSION_DESKTOP=KDE
+# Tell xdg-open (used by Electron apps like Discord/Firebot) that this is a
+# Plasma 6 session, so it calls kde-open instead of the long-removed kfmclient.
+# Without this, URL and folder clicks in Electron apps silently do nothing.
+export KDE_SESSION_VERSION=6
 
 # ---------------------------------------------------------------------------
 # 3. Helper: locate xdg-desktop-portal executables
@@ -77,6 +81,7 @@ export QT_PLUGIN_PATH="$INSTALL_PREFIX/lib64/plugins"
 export XDG_CURRENT_DESKTOP=KDE
 export XDG_SESSION_TYPE=wayland
 export XDG_SESSION_DESKTOP=KDE
+export KDE_SESSION_VERSION=6
 
 # ---------------------------------------------------------------------------
 # 1. Start XDG Desktop Portals
