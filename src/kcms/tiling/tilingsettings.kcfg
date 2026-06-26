@@ -104,11 +104,11 @@
       <min>0.01</min>
       <max>1.0</max>
     </entry>
-    <entry name="centerTileMasterSize" key="CenterTileMasterSize" type="Int">
-      <label>Number of master windows in the centre column of the CenterTile layout. Additional windows form side stacks on the left and right. Range 1-10.</label>
-      <default>1</default>
-      <min>1</min>
-      <max>10</max>
+    <entry name="centerTileMasterWidth" key="CenterTileMasterWidth" type="Int">
+      <label>Width of the centre master column in the CenterTile layout, as a percentage of the output width. The remaining width is split equally between the two side stacks. Range 20-95%.</label>
+      <default>75</default>
+      <min>20</min>
+      <max>95</max>
     </entry>
   </group>
   <group name="TilingRules">

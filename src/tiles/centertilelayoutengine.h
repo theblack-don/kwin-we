@@ -113,11 +113,18 @@ private:
     // floor/renormalisation details.
     QList<qreal> m_weights;
 
-    qreal m_masterRatio = 0.6;
+    // Default master-width fraction of the output (0.6 in truetile; bumped to
+    // 0.75 here so the centre column is wider out of the box). The KCM
+    // exposes this as a percentage (CenterTileMasterWidth) and clamps it
+    // to [20, 95].
+    qreal m_masterRatio = 0.75;
     int m_masterSize = 1;
-    // Bounds for setMasterRatio(). Matches the truetile defaults.
+    // Bounds for setMasterRatio(). The lower bound matches truetile
+    // (0.2); the upper bound is bumped from truetile's 0.75 to 0.95 so the
+    // user can make the centre column as wide as Image 2 in the design
+    // screenshots.
     static constexpr qreal m_minMasterRatio = 0.2;
-    static constexpr qreal m_maxMasterRatio = 0.75;
+    static constexpr qreal m_maxMasterRatio = 0.95;
     static constexpr int m_minMasterSize = 1;
     static constexpr int m_maxMasterSize = 10;
     static constexpr qreal m_minWeight = 0.1;

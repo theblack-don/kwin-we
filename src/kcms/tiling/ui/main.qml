@@ -141,25 +141,52 @@ KCM.SimpleKCM {
                 visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
             }
 
-            QQC2.SpinBox {
-                id: centerTileMasterSize
-                Kirigami.FormData.label: i18n("Master size:")
-                from: 1
-                to: 10
-                value: kcm.settings.centerTileMasterSize
-                onValueModified: kcm.settings.centerTileMasterSize = value
+            // Master column width as a percentage of the screen. The two side
+            // stacks share the remaining width equally. Default 75% gives a
+            // wide centre column with narrow side stacks.
+            RowLayout {
+                Kirigami.FormData.label: i18n("Master width:")
                 visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
                 enabled: visible
-                KCM.SettingStateBinding {
-                    configObject: kcm.settings
-                    settingName: "centerTileMasterSize"
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Slider {
+                    id: centerTileMasterWidthSlider
+                    from: 20
+                    to: 95
+                    stepSize: 1
+                    value: kcm.settings.centerTileMasterWidth
+                    Layout.fillWidth: true
+                    onMoved: kcm.settings.centerTileMasterWidth = value
+                    KCM.SettingStateBinding {
+                        configObject: kcm.settings
+                        settingName: "centerTileMasterWidth"
+                    }
+                }
+                QQC2.SpinBox {
+                    id: centerTileMasterWidthSpin
+                    from: centerTileMasterWidthSlider.from
+                    to: centerTileMasterWidthSlider.to
+                    value: kcm.settings.centerTileMasterWidth
+                    onValueModified: {
+                        kcm.settings.centerTileMasterWidth = value;
+                        centerTileMasterWidthSlider.value = value;
+                    }
+                    KCM.SettingStateBinding {
+                        configObject: kcm.settings
+                        settingName: "centerTileMasterWidth"
+                    }
+                }
+                QQC2.Label {
+                    text: i18nc("@item:suffix", "%")
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
             QQC2.Label {
                 visible: kcm.settings.enabledLayouts.indexOf("CenterTile") !== -1
                 Kirigami.FormData.label: i18nc("@info", "Note:")
-                text: xi18nc("@info", "Number of <emphasis>master</emphasis> windows in the centre column of the CenterTile layout. Additional windows form two side stacks, one on each side of the centre column. Larger values give the centre column more height at the cost of making it narrower per window. The change is applied to all live CenterTile engines on <interface>Apply</interface>.")
+                text: xi18nc("@info", "Width of the <emphasis>centre master column</emphasis> as a percentage of the output width. The remaining width is split equally between the two side stacks. Higher values give the centre column more room at the cost of narrower side stacks. The change is applied to all live CenterTile engines on <interface>Apply</interface>.")
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 opacity: 0.7

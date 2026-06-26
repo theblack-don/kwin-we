@@ -184,11 +184,13 @@ private:
     // horizontal axis on a master/stack layout, otherwise a per-leaf weight
     // delta. Clamped to a sane range in reconfigure().
     qreal m_resizeStep = 0.1;
-    // Default master-size (number of centre-column windows) for the
-    // CenterTile layout. Pushed into existing CenterTile engines whenever
-    // the user changes the value in the KCM. Clamped to [1, 10] in
-    // reconfigure(); matches the bounds in the kcfg schema.
-    int m_centerTileMasterSize = 1;
+    // Default master-width (percentage of output width) for the CenterTile
+    // layout's centre column. Pushed into existing CenterTile engines
+    // whenever the user changes the value in the KCM. Clamped to
+    // [20, 95] in reconfigure() and converted to a [0.2, 0.95] ratio when
+    // handed to the engine. The remaining width is split equally between
+    // the two side stacks.
+    int m_centerTileMasterWidth = 75;
     QStringList m_enabledLayouts;
     BorderMode m_borderMode = BorderMode::None;
     qreal m_borderThickness = 2.0;

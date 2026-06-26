@@ -72,9 +72,9 @@ private Q_SLOTS:
     void testMaximizeDetachesFromLayout();
     void testMoveBetweenOutputs();
     void testToggleFloating();
-    void testEngineMasterSizeDefaultsToOne();
-    void testEngineSetMasterSizeReflows();
-    void testConfigMasterSizePropagatesToEngine();
+    void testEngineMasterWidthDefaultsTo75();
+    void testEngineSetMasterRatioReflows();
+    void testConfigMasterWidthPropagatesToEngine();
 
 private:
     void createTiledWindow(std::unique_ptr<KWayland::Client::Surface> *surface,
@@ -235,7 +235,7 @@ void TilingCenterTileTest::testTwoWindowsUseCenterColumn()
 
     const QRectF g1 = m_window->moveResizeGeometry();
     const QRectF g2 = m_window2->moveResizeGeometry();
-    // Both windows are in the centre column with masterRatio=0.6 and there
+    // Both windows are in the centre column with masterRatio=0.75 and there
     // are no side stacks, so the centre column takes the full width.
     QVERIFY2(qFuzzyCompare(g1.width(), qreal(1280)),
              qPrintable(QStringLiteral("Window 1 width %1 != 1280").arg(g1.width())));
@@ -262,7 +262,7 @@ void TilingCenterTileTest::testThreeWindowsUseCenterAndRight()
     QVERIFY2(qFuzzyCompare(g1.width() + g2.width() + g3.width(), qreal(1280)),
              qPrintable(QStringLiteral("Three widths don't add up: %1+%2+%3 != 1280")
                             .arg(g1.width()).arg(g2.width()).arg(g3.width())));
-    // The centre column is wider than each side column (default ratio 0.6).
+    // The centre column is wider than each side column (default ratio 0.75).
     QVERIFY2(g2.width() > g1.width(),
              qPrintable(QStringLiteral("Centre column %1 not wider than left %2").arg(g2.width()).arg(g1.width())));
     QVERIFY2(g2.width() > g3.width(),
@@ -435,25 +435,26 @@ void TilingCenterTileTest::testToggleFloating()
     QTRY_VERIFY(m_window->tilingState().mode == TilingState::Mode::Tiled);
 }
 
-void TilingCenterTileTest::testEngineMasterSizeDefaultsToOne()
+void TilingCenterTileTest::testEngineMasterWidthDefaultsTo75()
 {
     // Create a CenterTile engine via the public path (setLayout), then read
-    // its masterSize() through the public accessor to verify the default.
+    // its masterRatio() through the public accessor to verify the default
+    // matches the KCM's default (75%, i.e. 0.75 ratio).
     workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
     auto *engine = qobject_cast<CenterTileLayoutEngine *>(
         m_tileManager->layoutEngine(m_desktop));
     QVERIFY(engine);
-    QCOMPARE(engine->masterSize(), 1);
+    QCOMPARE(engine->masterRatio(), qreal(0.75));
 }
 
-void TilingCenterTileTest::testEngineSetMasterSizeReflows()
+void TilingCenterTileTest::testEngineSetMasterRatioReflows()
 {
-    // Verify that calling setMasterSize() on a live engine updates the
-    // masterSize() value, and that the geometry reflows accordingly. With
-    // three windows and masterSize=2, the centre column holds two stacked
-    // windows; with masterSize=1, the centre column holds one window and
-    // the third goes into a side stack. The x-coordinate of the window that
-    // was the bottom-of-master column flips to a side-stack x.
+    // Verify that calling setMasterRatio() on a live engine updates the
+    // masterRatio() value, and that the geometry reflows accordingly. With
+    // three windows and masterRatio=0.4, the centre column is narrow and
+    // the side stacks are wide; with masterRatio=0.8, the centre column
+    // is wide and the side stacks are narrow. The width of the centre
+    // window changes accordingly.
     workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
     createTiledWindow(&m_surface, &m_shellSurface, &m_window);
     createTiledWindow(&m_surface2, &m_shellSurface2, &m_window2);
@@ -464,73 +465,87 @@ void TilingCenterTileTest::testEngineSetMasterSizeReflows()
         m_tileManager->layoutEngine(m_desktop));
     QVERIFY(engine);
 
-    // With masterSize=1, 3 windows: 1 left + 1 master + 1 right.
+    // With masterRatio=0.75 (default), 3 windows: 1 left + 1 master + 1 right.
     // m_window2 is the master (centre column).
-    QCOMPARE(engine->masterSize(), 1);
-    const qreal masterXWithOne = m_window2->moveResizeGeometry().x();
+    QCOMPARE(engine->masterRatio(), qreal(0.75));
+    const qreal masterWidthDefault = m_window2->moveResizeGeometry().width();
 
-    // Bump masterSize to 2: now m_window + m_window2 share the centre column,
-    // m_window3 moves into the right stack.
-    engine->setMasterSize(2);
-    QCOMPARE(engine->masterSize(), 2);
+    // Shrink the centre to 40% of screen width.
+    engine->setMasterRatio(0.4);
+    QCOMPARE(engine->masterRatio(), qreal(0.4));
+    const qreal masterWidthNarrow = m_window2->moveResizeGeometry().width();
+    QVERIFY2(masterWidthNarrow < masterWidthDefault,
+             qPrintable(QStringLiteral("Master did not shrink: %1 -> %2")
+                            .arg(masterWidthDefault).arg(masterWidthNarrow)));
+    // Width ratio should approximately match the masterRatio setting (within
+    // rounding tolerance).
+    const qreal screenWidth = qreal(1280);
+    QVERIFY2(qFuzzyCompare(masterWidthNarrow / screenWidth, qreal(0.4)),
+             qPrintable(QStringLiteral("Master width ratio %1 != 0.4")
+                            .arg(masterWidthNarrow / screenWidth)));
 
-    // After reflow, m_window2 is still in the centre column but shares
-    // it vertically with m_window; m_window3 is now alone in the right
-    // stack (so its x is > masterXWithOne).
-    const qreal masterXWithTwo = m_window2->moveResizeGeometry().x();
-    const qreal m3XWithTwo = m_window3->moveResizeGeometry().x();
-    QVERIFY2(qFuzzyCompare(masterXWithOne, masterXWithTwo),
-             qPrintable(QStringLiteral("Master x changed unexpectedly: %1 -> %2")
-                            .arg(masterXWithOne).arg(masterXWithTwo)));
-    QVERIFY2(m3XWithTwo > masterXWithTwo,
-             qPrintable(QStringLiteral("Window 3 not in right stack: x=%1, master x=%2")
-                            .arg(m3XWithTwo).arg(masterXWithTwo)));
+    // Grow the centre to 80% of screen width.
+    engine->setMasterRatio(0.8);
+    QCOMPARE(engine->masterRatio(), qreal(0.8));
+    const qreal masterWidthWide = m_window2->moveResizeGeometry().width();
+    QVERIFY2(masterWidthWide > masterWidthDefault,
+             qPrintable(QStringLiteral("Master did not grow: %1 -> %2")
+                            .arg(masterWidthDefault).arg(masterWidthWide)));
+    QVERIFY2(qFuzzyCompare(masterWidthWide / screenWidth, qreal(0.8)),
+             qPrintable(QStringLiteral("Master width ratio %1 != 0.8")
+                            .arg(masterWidthWide / screenWidth)));
 
-    // Setting the same value again is a no-op (reflow is skipped).
-    engine->setMasterSize(2);
-    QCOMPARE(engine->masterSize(), 2);
+    // Setting the same value again is a no-op (reflow is skipped, value preserved).
+    engine->setMasterRatio(0.8);
+    QCOMPARE(engine->masterRatio(), qreal(0.8));
 
-    // Out-of-range values are clamped to [1, 10].
-    engine->setMasterSize(0);
-    QCOMPARE(engine->masterSize(), 1);
-    engine->setMasterSize(99);
-    QCOMPARE(engine->masterSize(), 10);
+    // Out-of-range values are clamped to [0.2, 0.95].
+    engine->setMasterRatio(0.0);
+    QCOMPARE(engine->masterRatio(), qreal(0.2));
+    engine->setMasterRatio(1.5);
+    QCOMPARE(engine->masterRatio(), qreal(0.95));
 }
 
-void TilingCenterTileTest::testConfigMasterSizePropagatesToEngine()
+void TilingCenterTileTest::testConfigMasterWidthPropagatesToEngine()
 {
-    // Write a new master-size to kwinrc and trigger a config reload, then
-    // verify the live CenterTile engine picked up the new value. This is
-    // the same code path the KCM Apply button takes (DBus reloadConfig ->
+    // Write a new master-width (as a percentage of output width) to kwinrc
+    // and trigger a config reload, then verify the live CenterTile engine
+    // picked up the new value as a ratio (width / 100). This is the same
+    // code path the KCM Apply button takes (DBus reloadConfig ->
     // Workspace::slotReconfigure -> TilingController::reconfigure ->
     // applyCenterTileSettingsToOutput).
     workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
     auto *engine = qobject_cast<CenterTileLayoutEngine *>(
         m_tileManager->layoutEngine(m_desktop));
     QVERIFY(engine);
-    QCOMPARE(engine->masterSize(), 1);
+    QCOMPARE(engine->masterRatio(), qreal(0.75));
 
     KSharedConfig::Ptr config = kwinApp()->config();
     KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
-    tilingGroup.writeEntry("CenterTileMasterSize", 3);
+    tilingGroup.writeEntry("CenterTileMasterWidth", 80);
     tilingGroup.sync();
 
     workspace()->slotReconfigure();
 
-    QCOMPARE(engine->masterSize(), 3);
+    QCOMPARE(engine->masterRatio(), qreal(0.80));
 
-    // Restoring the default via kconfig and reloading brings it back to 1.
-    tilingGroup.writeEntry("CenterTileMasterSize", 1);
+    // Restoring the default via kconfig and reloading brings it back to 0.75.
+    tilingGroup.writeEntry("CenterTileMasterWidth", 75);
     tilingGroup.sync();
     workspace()->slotReconfigure();
-    QCOMPARE(engine->masterSize(), 1);
+    QCOMPARE(engine->masterRatio(), qreal(0.75));
 
     // Out-of-range config values are clamped at read time, so writing 99
-    // produces 10 in the live engine.
-    tilingGroup.writeEntry("CenterTileMasterSize", 99);
+    // produces a 0.95 ratio in the live engine, and writing 5 produces 0.20.
+    tilingGroup.writeEntry("CenterTileMasterWidth", 99);
     tilingGroup.sync();
     workspace()->slotReconfigure();
-    QCOMPARE(engine->masterSize(), 10);
+    QCOMPARE(engine->masterRatio(), qreal(0.95));
+
+    tilingGroup.writeEntry("CenterTileMasterWidth", 5);
+    tilingGroup.sync();
+    workspace()->slotReconfigure();
+    QCOMPARE(engine->masterRatio(), qreal(0.20));
 }
 
 } // namespace KWin

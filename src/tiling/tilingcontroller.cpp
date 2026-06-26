@@ -154,9 +154,10 @@ void TilingController::reconfigure()
     // a single press span the whole column.
     m_resizeStep = std::clamp(tilingGroup.readEntry("ResizeStep", 0.1), qreal(0.01), qreal(1.0));
 
-    // Default master-size for the CenterTile layout. Clamped to [1, 10]
-    // (same range as the kcfg schema and the engine's internal bound).
-    m_centerTileMasterSize = std::clamp(tilingGroup.readEntry("CenterTileMasterSize", 1), 1, 10);
+    // Default master-width for the CenterTile layout, as a percentage of
+    // the output width. Clamped to [20, 95] (same range as the kcfg
+    // schema). Converted to a [0.2, 0.95] ratio when handed to the engine.
+    m_centerTileMasterWidth = std::clamp(tilingGroup.readEntry("CenterTileMasterWidth", 75), 20, 95);
 
     const QString borderModeString = tilingGroup.readEntry("TilingBorderMode", QStringLiteral("None"));
     if (borderModeString == QLatin1String("AllTiled")) {
@@ -503,14 +504,17 @@ void TilingController::applyCenterTileSettingsToOutput(LogicalOutput *output)
         return;
     }
 
-    // Push the configured master-size into any live CenterTile engine on
+    // Push the configured master-width into any live CenterTile engine on
     // this output so the user-visible value matches what the KCM shows.
-    // Other layout kinds are unaffected (masterSize is a no-op for them).
+    // The KCM stores the value as a percentage of output width (20-95%);
+    // convert it to the engine's internal ratio (0.2-0.95) here. Other
+    // layout kinds are unaffected.
+    const qreal masterRatio = qreal(m_centerTileMasterWidth) / 100.0;
     for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
         if (LayoutEngine *engine = manager->layoutEngine(desktop)) {
             if (engine->layoutKind() == LayoutEngine::LayoutKind::CenterTile) {
                 if (auto *centerTileEngine = qobject_cast<CenterTileLayoutEngine *>(engine)) {
-                    centerTileEngine->setMasterSize(m_centerTileMasterSize);
+                    centerTileEngine->setMasterRatio(masterRatio);
                 }
             }
         }
