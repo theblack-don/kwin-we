@@ -522,44 +522,61 @@ void TilingCenterTileTest::testEngineSetMasterRatioReflows()
 
 void TilingCenterTileTest::testConfigMasterWidthPropagatesToEngine()
 {
-    // Write a new master-width (as a percentage of output width) to kwinrc
-    // and trigger a config reload, then verify the live CenterTile engine
-    // picked up the new value as a ratio (width / 100). This is the same
-    // code path the KCM Apply button takes (DBus reloadConfig ->
-    // Workspace::slotReconfigure -> TilingController::reconfigure ->
-    // applyCenterTileSettingsToOutput).
+    // Verify that the persisted CenterTileLastMasterRatio is applied to newly
+    // created CenterTile engines, and that interactive ratio changes are saved
+    // back to kwinrc. Also verify that out-of-range config values are clamped
+    // at read time.
+    //
+    // First, write a non-default ratio directly to kwinrc and reconfigure,
+    // then create a new engine — it should pick up the persisted ratio.
+    KSharedConfig::Ptr config = kwinApp()->config();
+    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+    tilingGroup.writeEntry("CenterTileLastMasterRatio", 0.80);
+    tilingGroup.sync();
+
+    workspace()->slotReconfigure();
+
     workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
     auto *engine = qobject_cast<CenterTileLayoutEngine *>(
         m_tileManager->layoutEngine(m_desktop));
     QVERIFY(engine);
-    QCOMPARE(engine->masterRatio(), qreal(0.75));
-
-    KSharedConfig::Ptr config = kwinApp()->config();
-    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
-    tilingGroup.writeEntry("CenterTileMasterWidth", 80);
-    tilingGroup.sync();
-
-    workspace()->slotReconfigure();
-
     QCOMPARE(engine->masterRatio(), qreal(0.80));
 
-    // Restoring the default via kconfig and reloading brings it back to 0.75.
-    tilingGroup.writeEntry("CenterTileMasterWidth", 75);
+    // Changing the engine's master ratio programmatically emits
+    // masterRatioChanged, which the controller uses to persist the value.
+    // After the signal is processed, the config file should contain the
+    // new value.
+    engine->setMasterRatio(0.5);
+    QCOMPARE(engine->masterRatio(), qreal(0.5));
+    // Re-read the config to verify it was persisted.
     tilingGroup.sync();
-    workspace()->slotReconfigure();
-    QCOMPARE(engine->masterRatio(), qreal(0.75));
+    QCOMPARE(tilingGroup.readEntry("CenterTileLastMasterRatio", 0.75), qreal(0.5));
 
-    // Out-of-range config values are clamped at read time, so writing 99
-    // produces a 0.95 ratio in the live engine, and writing 5 produces 0.20.
-    tilingGroup.writeEntry("CenterTileMasterWidth", 99);
+    // Restore the default and reconfigure — a freshly-created engine should
+    // now start with 0.75.
+    tilingGroup.writeEntry("CenterTileLastMasterRatio", 0.75);
     tilingGroup.sync();
     workspace()->slotReconfigure();
-    QCOMPARE(engine->masterRatio(), qreal(0.95));
 
-    tilingGroup.writeEntry("CenterTileMasterWidth", 5);
+    // Create a fresh engine by switching to a different layout and back.
+    workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::MasterStack);
+    workspace()->tilingController()->setLayout(LayoutEngine::LayoutKind::CenterTile);
+    auto *freshEngine = qobject_cast<CenterTileLayoutEngine *>(
+        m_tileManager->layoutEngine(m_desktop));
+    QVERIFY(freshEngine);
+    QCOMPARE(freshEngine->masterRatio(), qreal(0.75));
+
+    // Out-of-range config values are clamped at read time: 0.99 -> 0.95.
+    tilingGroup.writeEntry("CenterTileLastMasterRatio", 0.99);
     tilingGroup.sync();
     workspace()->slotReconfigure();
-    QCOMPARE(engine->masterRatio(), qreal(0.20));
+    QCOMPARE(freshEngine->masterRatio(), qreal(0.95));
+
+    // 0.05 -> 0.20.
+    tilingGroup.writeEntry("CenterTileLastMasterRatio", 0.05);
+    tilingGroup.sync();
+    workspace()->slotReconfigure();
+    QCOMPARE(freshEngine->masterRatio(), qreal(0.20));
 }
 
 } // namespace KWin

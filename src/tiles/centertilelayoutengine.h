@@ -79,6 +79,17 @@ public:
     bool supportsPerTileResize() const override { return true; }
     void adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis) override;
     void adjustColumnRatio(qreal delta) override { setMasterRatio(m_masterRatio + delta); }
+    void interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                Qt::Edge edge, const QSizeF &outputSize) override;
+
+    /**
+     * Emitted whenever the master ratio changes, either from an interactive
+     * user action (mouse resize, keyboard shortcut) or from a programmatic
+     * call to setMasterRatio(). The TilingController connects to this signal
+     * to persist the last-used ratio across sessions.
+     */
+Q_SIGNALS:
+    void masterRatioChanged(qreal ratio);
 
 private:
     int indexOfWindow(Window *window) const;
@@ -113,10 +124,11 @@ private:
     // floor/renormalisation details.
     QList<qreal> m_weights;
 
-    // Default master-width fraction of the output (0.6 in truetile; bumped to
-    // 0.75 here so the centre column is wider out of the box). The KCM
-    // exposes this as a percentage (CenterTileMasterWidth) and clamps it
-    // to [20, 95].
+    // Master-column width fraction of the output. Initial default is 0.75;
+    // updated at runtime from the persisted CenterTileLastMasterRatio config
+    // value (see TilingController). When the user interactively adjusts the
+    // centre column width, the new ratio is saved back to kwinrc so it
+    // survives restarts.
     qreal m_masterRatio = 0.75;
     int m_masterSize = 1;
     // Bounds for setMasterRatio(). The lower bound matches truetile

@@ -419,6 +419,7 @@ void CenterTileLayoutEngine::setMasterRatio(qreal ratio)
     }
     m_masterRatio = ratio;
     reflow();
+    Q_EMIT masterRatioChanged(m_masterRatio);
 }
 
 void CenterTileLayoutEngine::setMasterSize(int count)
@@ -609,6 +610,85 @@ int CenterTileLayoutEngine::indexOfWindow(Window *window) const
         }
     }
     return -1;
+}
+
+void CenterTileLayoutEngine::interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                                     Qt::Edge edge, const QSizeF &outputSize)
+{
+    if (!window || before.size() == QSizeF() || after.size() == QSizeF()
+        || outputSize.width() <= 0 || outputSize.height() <= 0) {
+        return;
+    }
+
+    const int idx = indexOfWindow(window);
+    if (idx < 0) {
+        return;
+    }
+
+    // --- Horizontal resize: move both dividers symmetrically (adjust masterRatio) ---
+    if (edge == Qt::LeftEdge || edge == Qt::RightEdge) {
+        const int col = columnIndexOfWindow(window);
+
+        // Screen-edge checks
+        if (col == 0 && edge == Qt::LeftEdge)  return; // left stack flush with screen
+        if (col == 2 && edge == Qt::RightEdge) return; // right stack flush with screen
+
+        // Compute the signed pixel movement of the window edge.
+        const qreal edgeDelta = (edge == Qt::RightEdge)
+            ? (after.right() - before.right())
+            : (before.left() - after.left());
+
+        // Master column:    positive edgeDelta = center wider → masterRatio increases
+        // Side stack:       positive edgeDelta = side wider → center narrower → masterRatio decreases
+        const qreal sign = (col == 1) ? 1.0 : -1.0;
+        const qreal ratioDelta = sign * edgeDelta / outputSize.width();
+        if (qFuzzyIsNull(ratioDelta)) {
+            return;
+        }
+        setMasterRatio(m_masterRatio + std::clamp(ratioDelta, qreal(-0.5), qreal(0.5)));
+        return;
+    }
+
+    // --- Vertical resize: push / pull within the window's column ---
+
+    // Determine contiguous index range for this column.
+    const ColumnSizes sizes = columnSizes(m_leaves.count());
+    int colStart = 0, colEnd = m_leaves.count();
+    if (idx < sizes.leftStack) {
+        colEnd = sizes.leftStack;
+    } else if (idx < sizes.leftStack + sizes.masterColumn) {
+        colStart = sizes.leftStack;
+        colEnd = colStart + sizes.masterColumn;
+    } else {
+        colStart = sizes.leftStack + sizes.masterColumn;
+    }
+    const int colIdx = idx - colStart;
+    const int neighbourIdx = (edge == Qt::BottomEdge) ? colIdx + 1 : colIdx - 1;
+    if (neighbourIdx < 0 || neighbourIdx >= (colEnd - colStart)) {
+        return; // No neighbour in that direction.
+    }
+
+    // Compute the weight delta from the geometry change.
+    const qreal weightDelta = (edge == Qt::BottomEdge)
+        ? (after.bottom() - before.bottom()) / outputSize.height()
+        : (before.top() - after.top()) / outputSize.height();
+    if (qFuzzyIsNull(weightDelta)) {
+        return;
+    }
+
+    // Push / pull: window takes weightDelta from its neighbour.
+    const int globalSelf = colStart + colIdx;
+    const int globalNeighbour = colStart + neighbourIdx;
+    qreal newSelf = std::clamp(m_weights[globalSelf] + weightDelta, m_minWeight, m_maxWeight);
+    qreal actualDelta = newSelf - m_weights[globalSelf];
+    qreal newNeighbour = std::clamp(m_weights[globalNeighbour] - actualDelta, m_minWeight, m_maxWeight);
+    if (qFuzzyCompare(m_weights[globalSelf], newSelf) && qFuzzyCompare(m_weights[globalNeighbour], newNeighbour)) {
+        return;
+    }
+
+    m_weights[globalSelf] = newSelf;
+    m_weights[globalNeighbour] = newNeighbour;
+    reflow();
 }
 
 } // namespace KWin

@@ -344,4 +344,48 @@ int StackedLayoutEngine::indexOfWindow(Window *window) const
     return -1;
 }
 
+void StackedLayoutEngine::interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                                  Qt::Edge edge, const QSizeF &outputSize)
+{
+    if (!window || before.size() == QSizeF() || after.size() == QSizeF()
+        || outputSize.width() <= 0 || outputSize.height() <= 0) {
+        return;
+    }
+
+    // Horizontal resize is a no-op for a single-column stack (no column divider).
+    if (edge == Qt::LeftEdge || edge == Qt::RightEdge) {
+        return;
+    }
+
+    // --- Vertical resize: push / pull with neighbour ---
+    const int idx = indexOfWindow(window);
+    if (idx < 0) {
+        return;
+    }
+
+    const qreal weightDelta = (edge == Qt::BottomEdge)
+        ? (after.bottom() - before.bottom()) / outputSize.height()
+        : (before.top() - after.top()) / outputSize.height();
+    if (qFuzzyIsNull(weightDelta)) {
+        return;
+    }
+
+    const int neighbourIdx = (edge == Qt::BottomEdge) ? idx + 1 : idx - 1;
+    if (neighbourIdx < 0 || neighbourIdx >= m_weights.size()) {
+        return; // No neighbour in that direction.
+    }
+
+    // Push / pull: the window takes weightDelta from its neighbour.
+    qreal newSelf = std::clamp(m_weights[idx] + weightDelta, MinWeight, MaxWeight);
+    qreal actualDelta = newSelf - m_weights[idx];
+    qreal newNeighbour = std::clamp(m_weights[neighbourIdx] - actualDelta, MinWeight, MaxWeight);
+    if (qFuzzyCompare(m_weights[idx], newSelf) && qFuzzyCompare(m_weights[neighbourIdx], newNeighbour)) {
+        return;
+    }
+
+    m_weights[idx] = newSelf;
+    m_weights[neighbourIdx] = newNeighbour;
+    reflow();
+}
+
 } // namespace KWin

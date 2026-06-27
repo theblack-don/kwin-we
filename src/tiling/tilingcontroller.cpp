@@ -154,10 +154,10 @@ void TilingController::reconfigure()
     // a single press span the whole column.
     m_resizeStep = std::clamp(tilingGroup.readEntry("ResizeStep", 0.1), qreal(0.01), qreal(1.0));
 
-    // Default master-width for the CenterTile layout, as a percentage of
-    // the output width. Clamped to [20, 95] (same range as the kcfg
-    // schema). Converted to a [0.2, 0.95] ratio when handed to the engine.
-    m_centerTileMasterWidth = std::clamp(tilingGroup.readEntry("CenterTileMasterWidth", 75), 20, 95);
+    // Last-used master column ratio for the CenterTile layout. Persisted
+    // to kwinrc whenever the user interactively adjusts the centre-column
+    // width via mouse resize or keyboard shortcut. Clamped to [0.2, 0.95].
+    m_lastCenterTileRatio = std::clamp(tilingGroup.readEntry("CenterTileLastMasterRatio", 0.75), 0.2, 0.95);
 
     const QString borderModeString = tilingGroup.readEntry("TilingBorderMode", QStringLiteral("None"));
     if (borderModeString == QLatin1String("AllTiled")) {
@@ -204,7 +204,7 @@ void TilingController::reconfigure()
     if (m_workspace) {
         for (LogicalOutput *output : m_workspace->outputs()) {
             applyGapSettingsToOutput(output);
-            applyCenterTileSettingsToOutput(output);
+            applyCenterTileRatioToOutput(output);
         }
         updateBorders();
     }
@@ -252,6 +252,16 @@ void TilingController::setupLayoutEngine(TileManager *manager, VirtualDesktop *d
     }
 
     auto engine = createLayoutEngine(kind, manager);
+    if (kind == LayoutEngine::LayoutKind::CenterTile) {
+        if (auto *ct = qobject_cast<CenterTileLayoutEngine *>(engine.get())) {
+            // Apply the persisted last-used ratio so the user sees their
+            // preferred centre-column width immediately.
+            ct->setMasterRatio(m_lastCenterTileRatio);
+            // Persist future interactive ratio changes.
+            connect(ct, &CenterTileLayoutEngine::masterRatioChanged,
+                    this, &TilingController::onCenterTileRatioChanged);
+        }
+    }
     manager->setLayoutEngine(desktop, std::move(engine));
 }
 
@@ -493,7 +503,7 @@ void TilingController::applyGapSettingsToOutput(LogicalOutput *output)
     }
 }
 
-void TilingController::applyCenterTileSettingsToOutput(LogicalOutput *output)
+void TilingController::applyCenterTileRatioToOutput(LogicalOutput *output)
 {
     if (!m_workspace || !output) {
         return;
@@ -504,21 +514,27 @@ void TilingController::applyCenterTileSettingsToOutput(LogicalOutput *output)
         return;
     }
 
-    // Push the configured master-width into any live CenterTile engine on
-    // this output so the user-visible value matches what the KCM shows.
-    // The KCM stores the value as a percentage of output width (20-95%);
-    // convert it to the engine's internal ratio (0.2-0.95) here. Other
-    // layout kinds are unaffected.
-    const qreal masterRatio = qreal(m_centerTileMasterWidth) / 100.0;
+    // Push the persisted last-used master ratio into any live CenterTile
+    // engine on this output. Other layout kinds are unaffected.
     for (VirtualDesktop *desktop : VirtualDesktopManager::self()->desktops()) {
         if (LayoutEngine *engine = manager->layoutEngine(desktop)) {
             if (engine->layoutKind() == LayoutEngine::LayoutKind::CenterTile) {
                 if (auto *centerTileEngine = qobject_cast<CenterTileLayoutEngine *>(engine)) {
-                    centerTileEngine->setMasterRatio(masterRatio);
+                    centerTileEngine->setMasterRatio(m_lastCenterTileRatio);
                 }
             }
         }
     }
+}
+
+void TilingController::onCenterTileRatioChanged(qreal ratio)
+{
+    // Clamp and persist the new ratio so it survives restarts.
+    m_lastCenterTileRatio = std::clamp(ratio, qreal(0.2), qreal(0.95));
+    KSharedConfigPtr config = KSharedConfig::openConfig(KWIN_CONFIG);
+    KConfigGroup tilingGroup(config, QStringLiteral("Tiling"));
+    tilingGroup.writeEntry("CenterTileLastMasterRatio", m_lastCenterTileRatio);
+    tilingGroup.sync();
 }
 
 void TilingController::onWindowAdded(Window *window)
@@ -1233,6 +1249,13 @@ void TilingController::setLayoutOn(LogicalOutput *output, VirtualDesktop *deskto
     const QList<Window *> carriedWindows = existing->windows();
 
     auto engine = createLayoutEngine(kind, manager);
+    if (kind == LayoutEngine::LayoutKind::CenterTile) {
+        if (auto *ct = qobject_cast<CenterTileLayoutEngine *>(engine.get())) {
+            ct->setMasterRatio(m_lastCenterTileRatio);
+            connect(ct, &CenterTileLayoutEngine::masterRatioChanged,
+                    this, &TilingController::onCenterTileRatioChanged);
+        }
+    }
     manager->setLayoutEngine(desktop, std::move(engine));
 
     LayoutEngine *fresh = manager->layoutEngine(desktop);
@@ -1419,7 +1442,6 @@ void TilingController::endInteractiveResize(Window *window, const RectF &finalGe
         return;
     }
 
-    // Translate the geometry delta into a weight/ratio delta on the engine.
     LogicalOutput *output = window->output() ? window->output() : m_workspace->activeOutput();
     if (!output) {
         return;
@@ -1429,41 +1451,16 @@ void TilingController::endInteractiveResize(Window *window, const RectF &finalGe
         return;
     }
 
-    qreal delta = 0.0;
-    Qt::Orientation axis = Qt::Vertical;
-    switch (edge) {
-    case Qt::LeftEdge:
-        delta = (before.left() - after.left()) / outputSize.width();
-        axis = Qt::Horizontal;
-        break;
-    case Qt::RightEdge:
-        delta = (after.right() - before.right()) / outputSize.width();
-        axis = Qt::Horizontal;
-        break;
-    case Qt::TopEdge:
-        delta = (before.top() - after.top()) / outputSize.height();
-        axis = Qt::Vertical;
-        break;
-    case Qt::BottomEdge:
-        delta = (after.bottom() - before.bottom()) / outputSize.height();
-        axis = Qt::Vertical;
-        break;
-    }
-    if (qFuzzyIsNull(delta)) {
-        return;
-    }
-
-    // Clamp the delta so a single very-large drag doesn't slam a weight to
-    // the rail. 0.5 (half a column / half a screen) is a generous upper
-    // bound for any single drag.
-    delta = std::clamp(delta, qreal(-0.5), qreal(0.5));
-
-    // The reflow will call leaf->setRelativeGeometry(...) which in turn
-    // calls w->moveResize(windowGeometry()) for every window in the leaf.
-    // That is the snap-back to the tiled geometry: the user dragged a
-    // floating proxy, releasing applies the new weight, and the window
-    // lands exactly where the engine wants it.
-    context.engine->adjustTileSize(window, delta, axis);
+    // Delegate to the engine's edge-aware handler, which knows how to
+    // interpret the geometry change based on which column the window is in
+    // and which edge was grabbed. The engine handles:
+    //   - Correct delta sign for non-master columns (MasterStack, CenterTile)
+    //   - Push/pull vertical resize between neighbours (all engines)
+    //   - Screen-edge no-ops
+    // The reflow inside the engine will call leaf->setRelativeGeometry(...)
+    // which in turn calls w->moveResize(windowGeometry()) for every window
+    // in the leaf — that is the snap-back to the tiled geometry.
+    context.engine->interactiveResizeEnded(window, before, after, edge, outputSize);
 }
 
 } // namespace KWin

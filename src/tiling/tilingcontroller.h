@@ -170,7 +170,8 @@ private:
     QList<LayoutEngine::LayoutKind> enabledLayoutKinds() const;
     bool isLayoutEnabled(LayoutEngine::LayoutKind kind) const;
     void applyGapSettingsToOutput(LogicalOutput *output);
-    void applyCenterTileSettingsToOutput(LogicalOutput *output);
+    void applyCenterTileRatioToOutput(LogicalOutput *output);
+    void onCenterTileRatioChanged(qreal ratio);
     void updateBorders();
 
     void setLayoutOn(LogicalOutput *output, VirtualDesktop *desktop, LayoutEngine::LayoutKind kind);
@@ -184,13 +185,12 @@ private:
     // horizontal axis on a master/stack layout, otherwise a per-leaf weight
     // delta. Clamped to a sane range in reconfigure().
     qreal m_resizeStep = 0.1;
-    // Default master-width (percentage of output width) for the CenterTile
-    // layout's centre column. Pushed into existing CenterTile engines
-    // whenever the user changes the value in the KCM. Clamped to
-    // [20, 95] in reconfigure() and converted to a [0.2, 0.95] ratio when
-    // handed to the engine. The remaining width is split equally between
-    // the two side stacks.
-    int m_centerTileMasterWidth = 75;
+    // Last-used master column ratio for the CenterTile layout.
+    // Persisted to kwinrc so the user's preferred centre-column width
+    // survives restarts. Updated whenever the user interactively adjusts
+    // the ratio via mouse resize or keyboard shortcut. Clamped to
+    // [0.2, 0.95] in reconfigure() and when reading from config.
+    qreal m_lastCenterTileRatio = 0.75;
     QStringList m_enabledLayouts;
     BorderMode m_borderMode = BorderMode::None;
     qreal m_borderThickness = 2.0;

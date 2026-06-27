@@ -154,6 +154,24 @@ public:
     virtual void adjustColumnRatio(qreal delta) { Q_UNUSED(delta) }
 
     /**
+     * Edge-aware interactive resize callback.
+     *
+     * Called from TilingController::endInteractiveResize when the user releases
+     * a mouse-driven resize of a tiled window. The engine receives the full
+     * context — the window that was grabbed, the geometry before/after the drag,
+     * the edge that was grabbed, and the output size in pixels — so it can
+     * decide the correct adjustments to its internal weights/ratios.
+     *
+     * The default implementation converts the delta to the pre-computed weight
+     * delta and axis (matching the behaviour of the old code path) and forwards
+     * to adjustTileSize(). Override in each engine to implement push/pull
+     * vertical resizes, correct horizontal delta sign for non-master columns,
+     * and screen-edge no-ops.
+     */
+    virtual void interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                        Qt::Edge edge, const QSizeF &outputSize);
+
+    /**
      * Directional focus support. Returns the window in the requested direction
      * relative to @p from, or nullptr if there is no window in that direction.
      * If @p from is nullptr, returns the primary/first window.

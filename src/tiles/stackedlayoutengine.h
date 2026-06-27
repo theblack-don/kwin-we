@@ -55,6 +55,8 @@ public:
     bool supportsPerTileResize() const override { return true; }
     void adjustTileSize(Window *window, qreal weightDelta, Qt::Orientation axis) override;
     void adjustColumnRatio(qreal delta) override { Q_UNUSED(delta) }
+    void interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                Qt::Edge edge, const QSizeF &outputSize) override;
 
 private:
     int indexOfWindow(Window *window) const;

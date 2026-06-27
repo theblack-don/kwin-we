@@ -460,4 +460,81 @@ int MasterStackLayoutEngine::indexOfWindow(Window *window) const
     return -1;
 }
 
+void MasterStackLayoutEngine::interactiveResizeEnded(Window *window, const RectF &before, const RectF &after,
+                                                      Qt::Edge edge, const QSizeF &outputSize)
+{
+    if (!window || before.size() == QSizeF() || after.size() == QSizeF()
+        || outputSize.width() <= 0 || outputSize.height() <= 0) {
+        return;
+    }
+
+    // --- Horizontal resize: move the column divider ---
+    if (edge == Qt::LeftEdge || edge == Qt::RightEdge) {
+        const QPair<int, bool> location = columnIndexOfWindow(window);
+        if (location.first < 0) {
+            return;
+        }
+        const bool isMaster = location.second;
+
+        // LeftEdge of master column is flush with the screen → no-op.
+        if (isMaster && edge == Qt::LeftEdge) {
+            return;
+        }
+        // RightEdge of stack column is flush with the screen → no-op.
+        if (!isMaster && edge == Qt::RightEdge) {
+            return;
+        }
+
+        // Compute the signed pixel movement of the column divider.
+        // For RightEdge of master:  divider = window.right()
+        // For LeftEdge  of stack:   divider = window.left()   (same physical position)
+        const qreal dividerDelta = (edge == Qt::RightEdge)
+            ? (after.right() - before.right())
+            : (after.left() - before.left());
+
+        const qreal ratioDelta = dividerDelta / outputSize.width();
+        if (qFuzzyIsNull(ratioDelta)) {
+            return;
+        }
+        setMasterRatio(m_masterRatio + std::clamp(ratioDelta, qreal(-0.5), qreal(0.5)));
+        return;
+    }
+
+    // --- Vertical resize: push / pull with neighbour ---
+    const int idx = indexOfWindow(window);
+    if (idx < 0) {
+        return;
+    }
+    const int masters = m_masterWeights.count();
+    const bool inMaster = idx < masters;
+    QList<qreal> &weights = inMaster ? m_masterWeights : m_stackWeights;
+    const int colIdx = inMaster ? idx : idx - masters;
+
+    // Compute the weight delta from the geometry change.
+    // Positive delta = window grew in the direction of the edge.
+    const qreal weightDelta = (edge == Qt::BottomEdge)
+        ? (after.bottom() - before.bottom()) / outputSize.height()
+        : (before.top() - after.top()) / outputSize.height();
+    if (qFuzzyIsNull(weightDelta)) {
+        return;
+    }
+
+    const int neighbourIdx = (edge == Qt::BottomEdge) ? colIdx + 1 : colIdx - 1;
+    if (neighbourIdx < 0 || neighbourIdx >= weights.size()) {
+        return; // No neighbour in that direction.
+    }
+
+    // Push / pull: the window takes weightDelta from its neighbour.
+    qreal newSelf = std::clamp(weights[colIdx] + weightDelta, m_minWeight, m_maxWeight);
+    qreal actualDelta = newSelf - weights[colIdx];
+    qreal newNeighbour = std::clamp(weights[neighbourIdx] - actualDelta, m_minWeight, m_maxWeight);
+    if (qFuzzyCompare(weights[colIdx], newSelf) && qFuzzyCompare(weights[neighbourIdx], newNeighbour)) {
+        return;
+    }
+
+    weights[colIdx] = newSelf;
+    weights[neighbourIdx] = newNeighbour;
+    reflow();
+}
+
 } // namespace KWin

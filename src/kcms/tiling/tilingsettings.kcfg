@@ -104,12 +104,6 @@
       <min>0.01</min>
       <max>1.0</max>
     </entry>
-    <entry name="centerTileMasterWidth" key="CenterTileMasterWidth" type="Int">
-      <label>Width of the centre master column in the CenterTile layout, as a percentage of the output width. The remaining width is split equally between the two side stacks. Range 20-95%.</label>
-      <default>75</default>
-      <min>20</min>
-      <max>95</max>
-    </entry>
   </group>
   <group name="TilingRules">
     <entry name="floatingClasses" key="FloatingClass" type="StringList">
